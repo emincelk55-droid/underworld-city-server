@@ -1,5 +1,4 @@
 require("dotenv").config();
-
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -11,47 +10,59 @@ const { Pool } = require("pg");
 const app = express();
 const server = http.createServer(app);
 
-// --- MIDDLEWARE ---
+const io = new Server(server, {
+  cors: { origin: "*" }
+});
+
 app.use(cors());
 app.use(express.json());
 
-// --- ENV CHECKS ---
+// ====== CONFIG ======
+const START_MONEY = 5000;
+
+// Render'da DATABASE_URL ve JWT_SECRET şart
 if (!process.env.DATABASE_URL) {
-  console.error("❌ DATABASE_URL is missing in environment variables!");
+  console.error("Missing env: DATABASE_URL");
 }
 if (!process.env.JWT_SECRET) {
-  console.error("❌ JWT_SECRET is missing in environment variables!");
+  console.error("Missing env: JWT_SECRET");
 }
 
-// --- DATABASE ---
+// ====== DB ======
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, // Render Postgres için genelde gerekli
+  ssl: { rejectUnauthorized: false }
 });
 
-pool.on("error", (err) => {
-  console.error("❌ Unexpected PG error:", err);
-});
-
-// DB init (users tablosu)
 async function initDB() {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-    console.log("✅ DB ready: users table OK");
-  } catch (err) {
-    console.error("❌ DB init error:", err);
-  }
-}
-initDB();
+  // users
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username VARCHAR(50) UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
 
-// --- AUTH MIDDLEWARE ---
+  // players (1-1)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS players (
+      id SERIAL PRIMARY KEY,
+      user_id INT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      money INT NOT NULL DEFAULT 0,
+      level INT NOT NULL DEFAULT 1,
+      xp INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+}
+
+initDB().catch((e) => {
+  console.error("initDB error:", e);
+});
+
+// ====== AUTH MIDDLEWARE ======
 function auth(req, res, next) {
   const header = req.headers["authorization"];
   if (!header) return res.status(401).json({ error: "No token" });
@@ -70,50 +81,60 @@ function auth(req, res, next) {
   }
 }
 
-// --- ROUTES ---
+// ====== ROUTES ======
 app.get("/", (req, res) => {
   res.send("Underworld City MMO API is running");
 });
 
 // REGISTER
 app.post("/api/register", async (req, res) => {
+  const client = await pool.connect();
   try {
-    const { username, password } = req.body || {};
+    const { username, password } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ error: "Missing fields" });
     }
-    if (typeof username !== "string" || typeof password !== "string") {
-      return res.status(400).json({ error: "Invalid fields" });
-    }
 
     const hashed = await bcrypt.hash(password, 10);
 
-    await pool.query(
-      "INSERT INTO users (username, password) VALUES ($1, $2)",
+    await client.query("BEGIN");
+
+    const userInsert = await client.query(
+      "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING id, username, created_at",
       [username, hashed]
     );
 
+    const user = userInsert.rows[0];
+
+    await client.query(
+      "INSERT INTO players (user_id, money, level, xp) VALUES ($1, $2, $3, $4)",
+      [user.id, START_MONEY, 1, 0]
+    );
+
+    await client.query("COMMIT");
     res.json({ success: true });
   } catch (err) {
-    // unique ihlali vs.
+    await client.query("ROLLBACK");
+    // username unique hatası vs.
     return res.status(400).json({ error: "Username already exists" });
+  } finally {
+    client.release();
   }
 });
 
 // LOGIN
 app.post("/api/login", async (req, res) => {
   try {
-    const { username, password } = req.body || {};
+    const { username, password } = req.body;
 
     if (!username || !password) {
       return res.status(400).json({ error: "Missing fields" });
     }
 
-    const result = await pool.query(
-      "SELECT id, username, password FROM users WHERE username=$1",
-      [username]
-    );
+    const result = await pool.query("SELECT * FROM users WHERE username=$1", [
+      username
+    ]);
 
     if (result.rows.length === 0) {
       return res.status(400).json({ error: "User not found" });
@@ -134,35 +155,69 @@ app.post("/api/login", async (req, res) => {
 
     res.json({ token });
   } catch (err) {
-    console.error("❌ /api/login error:", err);
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// ME (Token ile kullanıcı bilgisi)
-app.get("/api/me", auth, async (req, res) => {
+// PROFILE (token gerekli)
+app.get("/api/profile", auth, async (req, res) => {
   try {
     const result = await pool.query(
-      "SELECT id, username, created_at FROM users WHERE id=$1",
+      `
+      SELECT 
+        u.id as user_id,
+        u.username,
+        u.created_at as user_created_at,
+        p.money,
+        p.level,
+        p.xp,
+        p.created_at as player_created_at
+      FROM users u
+      JOIN players p ON p.user_id = u.id
+      WHERE u.id = $1
+      `,
       [req.user.id]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({ error: "Profile not found" });
     }
 
-    res.json({ user: result.rows[0] });
+    res.json({ profile: result.rows[0] });
   } catch (err) {
-    console.error("❌ /api/me error:", err);
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-// --- SOCKET.IO ---
-const io = new Server(server, {
-  cors: { origin: "*" },
+// TEST: PARA EKLE (token gerekli)
+// body: { "amount": 1000 }
+app.post("/api/profile/add-money", auth, async (req, res) => {
+  try {
+    const amount = Number(req.body.amount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ error: "Bad amount" });
+    }
+
+    const updated = await pool.query(
+      "UPDATE players SET money = money + $1 WHERE user_id = $2 RETURNING money, level, xp",
+      [amount, req.user.id]
+    );
+
+    if (updated.rows.length === 0) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    res.json({ success: true, stats: updated.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
+// ====== SOCKET.IO ======
 let onlineUsers = 0;
 
 io.on("connection", (socket) => {
@@ -170,7 +225,6 @@ io.on("connection", (socket) => {
   io.emit("online", onlineUsers);
 
   socket.on("chat", (data) => {
-    // data: { username, message } gibi
     io.emit("chat", data);
   });
 
@@ -180,8 +234,5 @@ io.on("connection", (socket) => {
   });
 });
 
-// --- START ---
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log("✅ Server running on port " + PORT);
-});
+server.listen(PORT, () => console.log("Server running on port " + PORT));
