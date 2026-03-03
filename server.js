@@ -33,7 +33,66 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+// ===== AUTO CREATE TABLES =====
+async function initDB() {
+  // USERS
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username VARCHAR(50) UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
 
+  // PLAYERS (1 user -> 1 player)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS players (
+      id SERIAL PRIMARY KEY,
+      user_id INT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      money INT NOT NULL DEFAULT 5000,
+      level INT NOT NULL DEFAULT 1,
+      xp INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // ITEMS (game item catalog)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS items (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(80) UNIQUE NOT NULL,
+      type VARCHAR(40) NOT NULL,
+      value INT NOT NULL DEFAULT 0
+    );
+  `);
+
+  // INVENTORY (who owns what)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS inventory (
+      id SERIAL PRIMARY KEY,
+      user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      item_id INT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      qty INT NOT NULL DEFAULT 1,
+      UNIQUE(user_id, item_id)
+    );
+  `);
+
+  // OPTIONAL: seed a few items (won't duplicate because of ON CONFLICT)
+  await pool.query(`
+    INSERT INTO items (name, type, value) VALUES
+      ('Water', 'consumable', 10),
+      ('Pistol', 'weapon', 500),
+      ('Bandage', 'consumable', 25)
+    ON CONFLICT (name) DO NOTHING;
+  `);
+
+  console.log("✅ DB tables ready");
+}
+
+initDB().catch((e) => {
+  console.error("❌ initDB error:", e);
+});
 async function initDB() {
   // users
   await pool.query(`
