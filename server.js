@@ -3,6 +3,8 @@ const express = require("express");
 const http = require("http");
 const path = require("path");
 const cors = require("cors");
+const helmet = require("helmet");
+const { rateLimit, corsOrigins, cleanChat } = require("./src/security");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { Server } = require("socket.io");
@@ -13,12 +15,38 @@ const pvp = require("./src/pvp");
 const market = require("./src/market");
 const business = require("./src/business");
 
+const PROD = process.env.NODE_ENV === "production";
+
+// Üretimde güçlü bir JWT anahtarı zorunlu
+if (!process.env.JWT_SECRET || (PROD && process.env.JWT_SECRET.length < 32)) {
+  console.error("❌ JWT_SECRET eksik ya da çok kısa (üretimde en az 32 karakter olmalı)");
+  if (PROD) process.exit(1);
+}
+
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const ORIGINS = corsOrigins();
+const io = new Server(server, { cors: { origin: ORIGINS }, maxHttpBufferSize: 16 * 1024 });
 
-app.use(cors());
-app.use(express.json());
+// Render gibi bir proxy arkasında gerçek IP'yi al
+app.set("trust proxy", 1);
+// Güvenlik başlıkları. Flutter web (CanvasKit, wasm, Google Fonts) için CSP kapalı.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+if (ORIGINS) app.use(cors({ origin: ORIGINS }));
+app.use(express.json({ limit: "16kb" }));
+
+// Genel API hız sınırı: IP başına dakikada 300 istek
+app.use("/api", rateLimit({ max: 300, windowMs: 60_000 }));
+
+// Sağlık kontrolü (Render health check)
+app.get("/healthz", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    res.json({ ok: true });
+  } catch {
+    res.status(503).json({ ok: false });
+  }
+});
 
 // ====== CONFIG ======
 const START_MONEY = require("./src/economy").START_MONEY;
@@ -26,7 +54,6 @@ const DEV_ENDPOINTS = process.env.ENABLE_DEV_ENDPOINTS === "true";
 const TICK_MS = 10_000;
 
 if (!process.env.DATABASE_URL) console.error("Missing env: DATABASE_URL");
-if (!process.env.JWT_SECRET) console.error("Missing env: JWT_SECRET");
 
 // ====== YARDIMCILAR ======
 function auth(req, res, next) {
@@ -41,6 +68,11 @@ function auth(req, res, next) {
   }
 }
 
+// Para ya da mal değiştiren tüm POST istekleri kullanıcı başına sınırlanır
+function authAction(req, res, next) {
+  auth(req, res, () => actionLimiter(req, res, next));
+}
+
 // Hataları tek yerden JSON'a çevirir.
 const handle = (fn) => async (req, res) => {
   try {
@@ -52,20 +84,12 @@ const handle = (fn) => async (req, res) => {
   }
 };
 
-// Basit IP bazlı hız sınırı (giriş/kayıt için)
-function rateLimit(max, windowMs) {
-  const hits = new Map();
-  return (req, res, next) => {
-    const now = Date.now();
-    const key = req.ip;
-    const list = (hits.get(key) || []).filter((t) => now - t < windowMs);
-    if (list.length >= max) return res.status(429).json({ error: "Çok fazla deneme, biraz bekle" });
-    list.push(now);
-    hits.set(key, list);
-    next();
-  };
-}
-const authLimiter = rateLimit(20, 60_000);
+// Giriş/kayıt: IP başına dakikada 20 deneme
+const authLimiter = rateLimit({ max: 20, windowMs: 60_000, message: "Çok fazla deneme, biraz bekle" });
+// Oyun eylemleri (para/mal değiştirenler): kullanıcı başına dakikada 60
+const actionLimiter = rateLimit({ max: 60, windowMs: 60_000, key: (req) => `u:${req.user?.id}` });
+// Sohbet: kullanıcı başına 10 saniyede 5 mesaj
+const chatLimiter = rateLimit({ max: 5, windowMs: 10_000 });
 
 // ====== AUTH ======
 app.post(
@@ -75,7 +99,7 @@ app.post(
     const { username, password } = req.body || {};
     if (typeof username !== "string" || !/^[A-Za-z0-9_]{3,20}$/.test(username))
       return res.status(400).json({ error: "Kullanıcı adı 3-20 karakter olmalı (harf, rakam, _)" });
-    if (typeof password !== "string" || password.length < 6)
+    if (typeof password !== "string" || password.length < 6 || password.length > 72)
       return res.status(400).json({ error: "Şifre en az 6 karakter olmalı" });
 
     const hashed = await bcrypt.hash(password, 10);
@@ -131,7 +155,7 @@ app.get(
 
 app.post(
   "/api/trade",
-  auth,
+  authAction,
   handle(async (req, res) => {
     const result = await game.trade(pool, req.user.id, req.body || {});
     io.emit("price", { districtId: result.districtId, goodId: result.goodId, price: result.newPrice });
@@ -141,7 +165,7 @@ app.post(
 
 app.post(
   "/api/travel",
-  auth,
+  authAction,
   handle(async (req, res) => res.json(await game.startTravel(pool, req.user.id, String(req.body?.to || ""))))
 );
 
@@ -183,7 +207,7 @@ app.get(
 
 app.post(
   "/api/gangs",
-  auth,
+  authAction,
   handle(async (req, res) => {
     const r = await gangs.createGang(pool, req.user.id, req.body || {});
     await syncGangRoom(req.user.id);
@@ -193,7 +217,7 @@ app.post(
 );
 app.post(
   "/api/gangs/:id/join",
-  auth,
+  authAction,
   handle(async (req, res) => {
     const r = await gangs.joinGang(pool, req.user.id, Number(req.params.id));
     await syncGangRoom(req.user.id);
@@ -203,7 +227,7 @@ app.post(
 );
 app.post(
   "/api/gang/leave",
-  auth,
+  authAction,
   handle(async (req, res) => {
     const r = await gangs.leaveGang(pool, req.user.id);
     await syncGangRoom(req.user.id);
@@ -216,7 +240,7 @@ app.post(
 );
 app.post(
   "/api/gang/kick",
-  auth,
+  authAction,
   handle(async (req, res) => {
     const target = Number(req.body?.userId);
     const r = await gangs.kickMember(pool, req.user.id, target);
@@ -227,22 +251,22 @@ app.post(
 );
 app.post(
   "/api/gang/rank",
-  auth,
+  authAction,
   handle(async (req, res) => res.json(await gangs.setRank(pool, req.user.id, Number(req.body?.userId), req.body?.rank)))
 );
 app.post(
   "/api/gang/deposit",
-  auth,
+  authAction,
   handle(async (req, res) => res.json(await gangs.deposit(pool, req.user.id, req.body?.amount)))
 );
 app.post(
   "/api/gang/withdraw",
-  auth,
+  authAction,
   handle(async (req, res) => res.json(await gangs.withdraw(pool, req.user.id, req.body?.amount)))
 );
 app.post(
   "/api/territory/action",
-  auth,
+  authAction,
   handle(async (req, res) => {
     const r = await gangs.territoryAction(pool, req.user.id, String(req.body?.action || ""));
     pushTerritory();
@@ -261,7 +285,7 @@ app.get("/api/street", auth, handle(async (req, res) => res.json(await pvp.stree
 app.get("/api/robberies", auth, handle(async (req, res) => res.json(await pvp.record(pool, req.user.id))));
 app.post(
   "/api/rob",
-  auth,
+  authAction,
   handle(async (req, res) => {
     const r = await pvp.rob(pool, req.user.id, req.body?.targetId);
     if (r.outcome !== "caught") {
@@ -291,7 +315,7 @@ app.get("/api/storage", auth, handle(async (req, res) => res.json(await market.s
 
 app.post(
   "/api/market/order",
-  auth,
+  authAction,
   handle(async (req, res) => {
     const r = await market.placeOrder(pool, req.user.id, req.body || {});
     // Emri dolan karşı taraflara haber ver
@@ -319,39 +343,39 @@ app.post(
 );
 app.post(
   "/api/market/cancel",
-  auth,
+  authAction,
   handle(async (req, res) => {
     const r = await market.cancelOrder(pool, req.user.id, req.body?.orderId);
     io.emit("book", { districtId: r.districtId, goodId: r.goodId });
     res.json(r);
   })
 );
-app.post("/api/storage/collect", auth, handle(async (req, res) => res.json(await market.collect(pool, req.user.id, req.body || {}))));
+app.post("/api/storage/collect", authAction, handle(async (req, res) => res.json(await market.collect(pool, req.user.id, req.body || {}))));
 
 // ====== İŞLETMELER ======
 app.get("/api/business/types", handle(async (req, res) => res.json(business.types())));
 app.get("/api/businesses", auth, handle(async (req, res) => res.json(await business.list(pool, req.user.id))));
-app.post("/api/business/buy", auth, handle(async (req, res) => {
+app.post("/api/business/buy", authAction, handle(async (req, res) => {
   const r = await business.buy(pool, req.user.id, String(req.body?.type || ""));
   pushNews();
   res.json(r);
 }));
-app.post("/api/business/:id/recipe", auth, handle(async (req, res) =>
+app.post("/api/business/:id/recipe", authAction, handle(async (req, res) =>
   res.json(await business.setRecipe(pool, req.user.id, req.params.id, String(req.body?.recipeId || "")))));
-app.post("/api/business/:id/load", auth, handle(async (req, res) =>
+app.post("/api/business/:id/load", authAction, handle(async (req, res) =>
   res.json(await business.load(pool, req.user.id, req.params.id, req.body || {}))));
-app.post("/api/business/:id/collect", auth, handle(async (req, res) =>
+app.post("/api/business/:id/collect", authAction, handle(async (req, res) =>
   res.json(await business.collectTill(pool, req.user.id, req.params.id))));
-app.post("/api/business/:id/upgrade", auth, handle(async (req, res) =>
+app.post("/api/business/:id/upgrade", authAction, handle(async (req, res) =>
   res.json(await business.upgrade(pool, req.user.id, req.params.id))));
-app.post("/api/business/:id/sell", auth, handle(async (req, res) =>
+app.post("/api/business/:id/sell", authAction, handle(async (req, res) =>
   res.json(await business.sell(pool, req.user.id, req.params.id))));
 
 // Sadece geliştirme: ENABLE_DEV_ENDPOINTS=true iken açık. Canlıda ekonomiyi bozar.
 if (DEV_ENDPOINTS) {
   app.post(
     "/api/profile/add-money",
-    auth,
+    authAction,
     handle(async (req, res) => {
       const amount = Number(req.body.amount);
       if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: "Bad amount" });
@@ -400,7 +424,11 @@ io.on("connection", async (socket) => {
 
   socket.on("chat", (data) => {
     if (!socket.user) return;
-    const text = String(data?.text ?? data ?? "").trim().slice(0, 280);
+    if (!chatLimiter.allow(`chat:${socket.user.id}`)) {
+      socket.emit("chat_error", { error: "Çok hızlı yazıyorsun, biraz bekle" });
+      return;
+    }
+    const text = cleanChat(data?.text ?? data ?? "");
     if (!text) return;
     const msg = { from: socket.user.username, text, at: new Date().toISOString() };
     if (data?.channel === "gang") {

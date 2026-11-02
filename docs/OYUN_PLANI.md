@@ -136,12 +136,12 @@ Kurallar:
 
 ## 7. Yol haritası
 
-### Faz 0: Temizlik (1-2 gün)
+### Faz 0: Temizlik (1-2 gün) — ✅ yapıldı (migration sistemi hariç)
 - `server.js` içinde `initDB` iki kez tanımlanmış. JavaScript'te sonraki tanım öncekini ezdiği için **`items` ve `inventory` tabloları hiç oluşmuyor.** Tek fonksiyona indirilecek.
 - `add-money` endpoint'i sadece geliştirme ortamında açık olacak.
 - Klasör yapısı (`routes/`, `db/`, `game/`), migration sistemi, giriş için basit hız sınırı (rate limit).
 
-### Faz 1: Oynanabilir MVP (2-3 hafta)
+### Faz 1: Oynanabilir MVP (2-3 hafta) — ✅ yapıldı
 - Semtler, mallar, NPC al/sat, enerji
 - Yolculuk ve risk sistemi, tick işçisi
 - Basit web istemcisi: profil, semt ekranı, al/sat, yolculuk

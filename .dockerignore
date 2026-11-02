@@ -1,0 +1,10 @@
+.git
+node_modules
+.env
+docs
+test
+scripts
+client/build
+client/.dart_tool
+client/android
+client/ios

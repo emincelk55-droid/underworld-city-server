@@ -75,7 +75,7 @@ node scripts/economy-sim.js
 - `server.js`, `src/`: Node.js + Express + Socket.io + PostgreSQL sunucusu
 - `client/`: Flutter istemcisi (web, Android, iOS)
 
-## Çalıştırma
+## Çalıştırma (geliştirme)
 
 ```bash
 # 1) Sunucu
@@ -83,15 +83,41 @@ cp .env.example .env   # DATABASE_URL ve JWT_SECRET'i doldur
 npm install
 npm start              # tablolar ve dünya verisi otomatik kurulur
 
-# 2) İstemci (geliştirme)
+# 2) İstemci
 cd client
 flutter pub get
-flutter run -d chrome --dart-define=API_URL=http://localhost:3000
-
-# 3) Tek sunucudan yayınlama
-cd client && flutter build web --release
-# server.js, client/build/web klasörünü otomatik servis eder → http://localhost:3000
+flutter run -d chrome --web-port 8080 --dart-define=API_URL=http://localhost:3000
+# .env içinde CORS_ORIGIN=http://localhost:8080 olmalı
 ```
+
+## Testler
+
+```bash
+# Ayrı bir test veritabanı oluşturup siler (gerçek verine dokunmaz)
+TEST_DATABASE_URL=postgres://kullanici:sifre@localhost:5432/uw_test npm test
+npm run sim            # ekonomi simülasyonu
+```
+
+Testler kayıt/giriş, ticaret, aynı anda gelen isteklerde para kopyalama, yolculuk, borsa eşleşmesi ve para korunumu, çete yetkileri, soygun ve işletme kirasını gerçek bir sunucu üzerinde kontrol eder. GitHub Actions her PR'da testleri, `flutter analyze` + web derlemesini ve Docker imajını çalıştırır.
+
+## Yayına alma (Render)
+
+Repo, Flutter web istemcisini derleyip Node sunucusuyla tek imajda paketleyen bir `Dockerfile` ve bir Render Blueprint'i (`render.yaml`) içerir.
+
+1. Bu dalı `main`'e birleştir.
+2. Render Dashboard → **New → Blueprint** → bu repoyu seç. `render.yaml` bir web servisi ve bir PostgreSQL veritabanı oluşturur. `JWT_SECRET` otomatik üretilir, `DATABASE_URL` veritabanına bağlanır.
+3. İlk derleme Flutter'ı indirdiği için 5-10 dakika sürer. Sonrasında `https://<servis-adı>.onrender.com` adresinde oyun açılır.
+
+Notlar:
+- Render'ın ücretsiz planında servis 15 dakika kullanılmayınca uyur, ilk istek yavaş açılır. Ücretsiz veritabanının bir süre sınırı var, güncel koşulları Render'dan kontrol et. Beta için ücretli plana geçmek gerekebilir.
+- Var olan bir Render servisini kullanıyorsan: **Runtime = Docker**, health check yolu `/healthz`, ortam değişkenleri `NODE_ENV=production`, `JWT_SECRET` (en az 32 karakter) ve `DATABASE_URL`.
+
+### Güvenlik
+- `NODE_ENV=production` iken `JWT_SECRET` 32 karakterden kısaysa sunucu başlamaz.
+- Güvenlik başlıkları helmet ile ekleniyor. CORS varsayılan olarak kapalı (istemci aynı adresten servis ediliyor). Başka bir adresten bağlanacaksan `CORS_ORIGIN` kullan.
+- Hız sınırları: genel API için IP başına dakikada 300 istek, giriş/kayıt için 20, para ya da mal değiştiren işlemler için kullanıcı başına 60, sohbet için 10 saniyede 5 mesaj.
+- Sohbette küfür filtresi var, liste `CHAT_BLOCKLIST` ile genişletilebilir. İstek gövdesi en fazla 16 KB.
+- `/api/profile/add-money` sadece `ENABLE_DEV_ENDPOINTS=true` iken açık.
 
 ## API
 | Metot | Yol | Açıklama |

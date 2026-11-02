@@ -461,6 +461,10 @@ class GameState extends ChangeNotifier {
       if (chat.length > 100) chat.removeAt(0);
       notifyListeners();
     });
+    s.on('chat_error', (data) {
+      toasts.add((data['error'] ?? 'Mesaj gönderilemedi', true));
+      notifyListeners();
+    });
     s.on('online', (n) {
       online = n is int ? n : 0;
       notifyListeners();
