@@ -71,6 +71,8 @@ class PlayerState {
   final Travel? travel;
   final MyGang? gang;
   final Map<String, dynamic>? lastEvent;
+  final Map<String, dynamic>? robbed;
+  final DateTime? protectedUntil;
 
   PlayerState.fromJson(Map<String, dynamic> j)
       : username = j['username'],
@@ -86,7 +88,9 @@ class PlayerState {
         inventory = (j['inventory'] as List).map((e) => Holding.fromJson(e)).toList(),
         travel = j['travel'] == null ? null : Travel.fromJson(j['travel']),
         gang = j['gang'] == null ? null : MyGang.fromJson(j['gang']),
-        lastEvent = j['lastEvent'];
+        lastEvent = j['lastEvent'],
+        robbed = j['robbed'],
+        protectedUntil = j['protectedUntil'] == null ? null : DateTime.parse(j['protectedUntil']);
 
   int qtyOf(String goodId) =>
       inventory.where((h) => h.goodId == goodId).fold(0, (s, h) => s + h.qty);
@@ -215,5 +219,59 @@ class NewsItem {
       : id = j['id'],
         text = j['text'],
         kind = j['kind'],
+        at = DateTime.parse(j['at']);
+}
+
+// ====================== SOKAK / SOYGUN ======================
+class StreetPerson {
+  final int userId, level, odds;
+  final String username, wealth;
+  final bool online, ally, revenge;
+  final GangRef? gang;
+  final DateTime? protectedUntil;
+  StreetPerson.fromJson(Map<String, dynamic> j)
+      : userId = j['userId'],
+        level = j['level'],
+        odds = j['odds'],
+        username = j['username'],
+        wealth = j['wealth'],
+        online = j['online'] ?? false,
+        ally = j['ally'] ?? false,
+        revenge = j['revenge'] ?? false,
+        gang = j['gang'] == null ? null : GangRef.fromJson(j['gang']),
+        protectedUntil = j['protectedUntil'] == null ? null : DateTime.parse(j['protectedUntil']);
+
+  bool get isProtected => protectedUntil != null && protectedUntil!.isAfter(DateTime.now());
+  bool get robbable => !ally && !isProtected;
+}
+
+class StreetInfo {
+  final String districtId;
+  final bool traveling;
+  final int robEnergy, policeRisk;
+  final List<StreetPerson> people;
+  StreetInfo.fromJson(Map<String, dynamic> j)
+      : districtId = j['districtId'],
+        traveling = j['traveling'] ?? false,
+        robEnergy = j['robEnergy'],
+        policeRisk = j['policeRisk'],
+        people = (j['people'] as List).map((e) => StreetPerson.fromJson(e)).toList();
+}
+
+class RobRecord {
+  final int id, cash;
+  final bool mine;
+  final String attacker, target, outcome, districtId;
+  final List goods;
+  final DateTime at;
+  RobRecord.fromJson(Map<String, dynamic> j)
+      : id = j['id'],
+        cash = (j['cash'] as num).toInt(),
+        mine = j['mine'],
+        attacker = j['attacker'],
+        target = j['target'],
+        outcome = j['outcome'],
+        districtId = j['districtId'],
+        goods = j['goods'] ?? const [],
         at = DateTime.parse(j['at']);
 }

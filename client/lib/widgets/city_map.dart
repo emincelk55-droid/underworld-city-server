@@ -322,7 +322,7 @@ class _MapPainter extends CustomPainter {
     }
 
     // Pusula
-    _compass(canvas, Offset(w - 44, h - 44), 26);
+    _compass(canvas, Offset(w - 44, h - 108), 26);
 
     // Kenar karartma
     canvas.drawRect(

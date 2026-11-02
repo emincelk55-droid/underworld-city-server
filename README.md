@@ -19,6 +19,18 @@ Tasarım planı: [`docs/OYUN_PLANI.md`](docs/OYUN_PLANI.md)
 - Bölgenin faydaları: yarı vergi, satış vergisinin yarısı aile kasasına, yarı polis riski, soygun yok
 - Aile kasası, aile sohbeti, "Son Dakika" haber bandı ve aile sıralaması
 
+### Sokak ve PvP soygun
+| Sokak | İntikam alındı | Soyuldun |
+|---|---|---|
+| ![](docs/screenshots/pvp_street.png) | ![](docs/screenshots/pvp_revenge.png) | ![](docs/screenshots/pvp_robbed.png) |
+
+- Haritadaki **SOKAK** butonu, bulunduğun semtteki oyuncuları fötr şapkalı silüetlerle gösterir. Her kartta başarı şansı, ne kadar zengin olduğu, koruma süresi ve intikam durumu yazar
+- Soygun 20 enerji ister. Başarı şansı %50'den başlar ve seviye farkı başına ±%5 değişir. Hedefin ailesi semti tutuyorsa -%15, senin ailen tutuyorsa +%10. Seni son 24 saatte soyan birine karşı **intikam** bonusu +%15'tir ve bir kez kullanılır. Şans en az %15, en fazla %85'tir
+- Önce polis riski var (semtin polis oranı × 0.3). Yakalanırsan ceza ödersin
+- Başarılı soygunda hedefin parasının %10-20'sini (bir üst sınıra kadar) ve rastgele bir malının %25'ini alırsın. Ailen varsa semtte +15 nüfuz kazanırsın. Büyük soygunlar haber bandına düşer
+- Koruma: yeni oyuncular ilk 2 saat, soyulanlar 30 dakika korumadadır. Soygun yaparsan kendi koruman biter. Aynı aileden kimse soyulamaz
+- Kurban gerçek zamanlı bildirim alır. Oyunda değilse bildirim bir sonraki girişinde gelir. Sicil ekranında yaptığın ve sana yapılan soygunlar listelenir
+
 ## Yapı
 - `server.js`, `src/`: Node.js + Express + Socket.io + PostgreSQL sunucusu
 - `client/`: Flutter istemcisi (web, Android, iOS)
@@ -59,5 +71,8 @@ cd client && flutter build web --release
 | GET | `/api/territory` | Semtlerin sahipleri, nüfuz sıralaması, tur bitişi |
 | POST | `/api/territory/action` | `{action: "patrol"\|"bribe"\|"raid"}` |
 | GET | `/api/news` | Son dakika haberleri |
+| GET | `/api/street` | Bulunduğun semtteki oyuncular (şans, koruma, intikam) |
+| POST | `/api/rob` | `{targetId}`: soygun |
+| GET | `/api/robberies` | Sicil: son soygunlar |
 
-Socket.io olayları: `prices`, `price`, `chat` (`channel: global|gang`), `online`, `arrived`, `territory`, `news`, `gang`.
+Socket.io olayları: `prices`, `price`, `chat` (`channel: global|gang`), `online`, `arrived`, `territory`, `news`, `gang`, `robbed`.

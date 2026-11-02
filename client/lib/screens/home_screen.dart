@@ -10,6 +10,7 @@ import '../widgets/deco.dart';
 import '../widgets/crest.dart';
 import 'gang_panel.dart';
 import 'panels.dart';
+import 'street.dart';
 
 class HomeScreen extends StatefulWidget {
   final GameState game;
@@ -46,6 +47,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onGame() {
+    final robbed = g.pendingRobbed;
+    if (robbed != null && !_showingEvent && mounted) {
+      g.pendingRobbed = null;
+      _showingEvent = true;
+      showDialog(context: context, builder: (_) => RobbedDialog(game: g, data: robbed))
+          .whenComplete(() => _showingEvent = false);
+      return;
+    }
     final ev = g.pendingEvent;
     if (ev != null && !_showingEvent && mounted) {
       g.pendingEvent = null;
@@ -76,6 +85,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _openStreet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => StreetSheet(
+        game: g,
+        onResult: (r) => showDialog(context: context, builder: (_) => RobResultDialog(result: r)),
+      ),
+    );
+  }
+
   void _openDistrict(District d) {
     setState(() => _selected = d.id);
     showModalBottomSheet(
@@ -91,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final me = g.me!;
     return LayoutBuilder(builder: (context, box) {
       final wide = box.maxWidth >= 980;
-      final map = _MapView(game: g, selected: _selected, onTap: _openDistrict);
+      final map = _MapView(game: g, selected: _selected, onTap: _openDistrict, onStreet: _openStreet);
       final panels = [
         MarketPanel(game: g, toast: _toast),
         InventoryPanel(game: g, toast: _toast),
@@ -150,7 +171,8 @@ class _MapView extends StatelessWidget {
   final GameState game;
   final String? selected;
   final ValueChanged<District> onTap;
-  const _MapView({required this.game, required this.selected, required this.onTap});
+  final VoidCallback onStreet;
+  const _MapView({required this.game, required this.selected, required this.onTap, required this.onStreet});
 
   @override
   Widget build(BuildContext context) {
@@ -191,6 +213,8 @@ class _MapView extends StatelessWidget {
               Text('Şehir Haritası · Semte dokun', style: UW.body(11, color: UW.muted)),
             ]),
           ),
+          if (travel == null)
+            Positioned(right: 12, bottom: 12, child: _StreetButton(game: game, onTap: onStreet)),
           if (travel != null)
             Positioned(left: 12, right: 12, bottom: 12, child: _TravelBanner(game: game, travel: travel))
           else if (here != null)
@@ -291,7 +315,20 @@ class Hud extends StatelessWidget {
                   ],
                   Text(me.username, style: UW.serif(16)),
                 ]),
-                Text('Seviye ${me.level}  ·  ${game.online} çevrimiçi', style: UW.body(11, color: UW.muted)),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('Seviye ${me.level}  ·  ${game.online} çevrimiçi', style: UW.body(11, color: UW.muted)),
+                  if (me.protectedUntil != null && me.protectedUntil!.isAfter(DateTime.now())) ...[
+                    const SizedBox(width: 8),
+                    Tooltip(
+                      message: 'Koruma: bu süre boyunca kimse seni soyamaz',
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.shield, size: 12, color: UW.neon),
+                        const SizedBox(width: 3),
+                        Countdown(to: me.protectedUntil!, style: UW.number(11, color: UW.neon, weight: FontWeight.w600)),
+                      ]),
+                    ),
+                  ],
+                ]),
               ]),
             ]),
             Row(mainAxisSize: MainAxisSize.min, children: [
@@ -412,6 +449,87 @@ class _BottomNav extends StatelessWidget {
               ),
             );
           }),
+        ),
+      ),
+    );
+  }
+}
+
+class _StreetButton extends StatefulWidget {
+  final GameState game;
+  final VoidCallback onTap;
+  const _StreetButton({required this.game, required this.onTap});
+
+  @override
+  State<_StreetButton> createState() => _StreetButtonState();
+}
+
+class _StreetButtonState extends State<_StreetButton> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600))
+    ..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final people = widget.game.street?.people ?? const [];
+    final targets = people.where((p) => p.robbable).length;
+    final revenge = people.any((p) => p.revenge && p.robbable);
+    final accent = revenge ? UW.crimson : (targets > 0 ? UW.crimson : UW.gold);
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, child) => Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: [
+            BoxShadow(color: accent.withValues(alpha: targets > 0 ? 0.25 + 0.35 * _c.value : 0.15), blurRadius: 18),
+          ],
+        ),
+        child: child,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(8, 6, 14, 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              gradient: LinearGradient(colors: [Color.lerp(accent, Colors.black, 0.6)!, UW.panel]),
+              border: Border.all(color: accent.withValues(alpha: 0.8)),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              SizedBox(
+                width: 34 + (people.length.clamp(1, 3) - 1) * 14.0,
+                height: 34,
+                child: Stack(children: [
+                  for (var i = 0; i < people.length.clamp(0, 3); i++)
+                    Positioned(
+                      left: i * 14.0,
+                      child: NoirAvatar(
+                        size: 34,
+                        seed: people[i].userId,
+                        band: people[i].gang == null ? null : hexColor(people[i].gang!.color),
+                      ),
+                    ),
+                  if (people.isEmpty) const NoirAvatar(size: 34, dim: true),
+                ]),
+              ),
+              const SizedBox(width: 10),
+              Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                Text(revenge ? 'İNTİKAM FIRSATI' : 'SOKAK', style: UW.display(12, color: UW.goldLight, weight: FontWeight.w900)),
+                Text(
+                  people.isEmpty ? 'Kimse yok' : '${people.length} kişi · $targets hedef',
+                  style: UW.body(11, color: UW.cream.withValues(alpha: 0.8)),
+                ),
+              ]),
+            ]),
+          ),
         ),
       ),
     );

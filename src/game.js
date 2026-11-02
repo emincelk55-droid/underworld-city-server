@@ -341,11 +341,32 @@ async function getState(pool, userId) {
         [userId]
       );
     }
+    // Görülmemiş soyulma olayı (bir kez gösterilir)
+    const rob = await client.query(
+      `UPDATE robberies SET seen=true WHERE id = (
+         SELECT id FROM robberies WHERE target_id=$1 AND seen=false ORDER BY id DESC LIMIT 1)
+       RETURNING id, success, cash, goods, district_id,
+         (SELECT username FROM users WHERE id = attacker_id) AS attacker`,
+      [userId]
+    );
+    await client.query("UPDATE robberies SET seen=true WHERE target_id=$1 AND seen=false", [userId]);
+    const robbed = rob.rows[0]
+      ? {
+          attacker: rob.rows[0].attacker,
+          success: rob.rows[0].success,
+          cash: Number(rob.rows[0].cash),
+          goods: rob.rows[0].goods || [],
+          districtId: rob.rows[0].district_id
+        }
+      : null;
     await client.query("COMMIT");
 
     const level = 1 + Math.floor(Math.sqrt(player.xp / 50));
     return {
       username: player.username,
+      protectedUntil:
+        new Date(player.protected_until) > new Date() ? new Date(player.protected_until).toISOString() : null,
+      robbed,
       money: Number(player.money),
       xp: player.xp,
       level,
@@ -442,6 +463,8 @@ async function tickPrices(pool) {
 
 module.exports = {
   GameError,
+  cargo,
+  cargoWeight,
   lockPlayer,
   activeTravel,
   spendEnergy,

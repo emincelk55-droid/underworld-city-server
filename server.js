@@ -9,6 +9,7 @@ const { Server } = require("socket.io");
 const { pool, initDB } = require("./src/db");
 const game = require("./src/game");
 const gangs = require("./src/gangs");
+const pvp = require("./src/pvp");
 
 const app = express();
 const server = http.createServer(app);
@@ -242,6 +243,35 @@ app.post(
   auth,
   handle(async (req, res) => {
     const r = await gangs.territoryAction(pool, req.user.id, String(req.body?.action || ""));
+    pushTerritory();
+    res.json(r);
+  })
+);
+
+// ====== SOKAK / SOYGUN ======
+function onlineUserIds() {
+  const ids = new Set();
+  for (const s of io.of("/").sockets.values()) if (s.user) ids.add(s.user.id);
+  return ids;
+}
+
+app.get("/api/street", auth, handle(async (req, res) => res.json(await pvp.street(pool, req.user.id, onlineUserIds()))));
+app.get("/api/robberies", auth, handle(async (req, res) => res.json(await pvp.record(pool, req.user.id))));
+app.post(
+  "/api/rob",
+  auth,
+  handle(async (req, res) => {
+    const r = await pvp.rob(pool, req.user.id, req.body?.targetId);
+    if (r.outcome !== "caught") {
+      io.to(`user:${r.targetId}`).emit("robbed", {
+        attacker: r.attacker,
+        success: r.outcome === "success",
+        cash: r.cash,
+        goods: r.goods,
+        districtId: r.districtId
+      });
+    }
+    if (r.newsWorthy) pushNews();
     pushTerritory();
     res.json(r);
   })

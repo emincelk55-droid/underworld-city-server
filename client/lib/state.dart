@@ -49,6 +49,12 @@ class GameState extends ChangeNotifier {
   int gangCreateCost = 2500;
   int unreadGangChat = 0;
 
+  // Sokak / soygun
+  StreetInfo? street;
+  List<RobRecord> robRecords = [];
+  Map<String, dynamic>? pendingRobbed;
+  Timer? _streetTimer;
+
   /// Yolculuk bitince gösterilecek olay (UI okur ve temizler).
   Map<String, dynamic>? pendingEvent;
 
@@ -135,6 +141,8 @@ class GameState extends ChangeNotifier {
     _socket?.dispose();
     _socket = null;
     _arrivalTimer?.cancel();
+    _streetTimer?.cancel();
+    street = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
     notifyListeners();
@@ -148,6 +156,29 @@ class GameState extends ChangeNotifier {
     unawaited(loadNews());
     unawaited(loadGangs());
     unawaited(loadMyGang());
+    unawaited(loadStreet());
+    _streetTimer?.cancel();
+    _streetTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (token != null) unawaited(loadStreet().catchError((_) {}));
+    });
+  }
+
+  // ====== SOKAK ======
+  Future<void> loadStreet() async {
+    street = StreetInfo.fromJson(await _req('GET', '/api/street'));
+    notifyListeners();
+  }
+
+  Future<void> loadRobRecords() async {
+    robRecords = (await _req('GET', '/api/robberies') as List).map((e) => RobRecord.fromJson(e)).toList();
+    notifyListeners();
+  }
+
+  Future<Map<String, dynamic>> rob(int targetId) async {
+    final r = Map<String, dynamic>.from(await _req('POST', '/api/rob', {'targetId': targetId}));
+    await refreshMe();
+    await Future.wait([loadStreet(), loadRobRecords()]);
+    return r;
   }
 
   // ====== ÇETE / BÖLGE ======
@@ -230,8 +261,14 @@ class GameState extends ChangeNotifier {
 
 
   Future<void> refreshMe() async {
+    final prev = me;
     me = PlayerState.fromJson(await _req('GET', '/api/me'));
+    // Semt ya da yolculuk durumu değiştiyse sokaktakileri yenile
+    if (prev != null && (prev.districtId != me!.districtId || (prev.travel == null) != (me!.travel == null))) {
+      unawaited(loadStreet().catchError((_) {}));
+    }
     if (me!.lastEvent != null) pendingEvent = me!.lastEvent;
+    if (me!.robbed != null) pendingRobbed = me!.robbed;
     _scheduleArrival();
     notifyListeners();
   }
@@ -298,7 +335,14 @@ class GameState extends ChangeNotifier {
       online = n is int ? n : 0;
       notifyListeners();
     });
-    s.on('arrived', (_) => refreshMe());
+    s.on('arrived', (_) async {
+      await refreshMe();
+      unawaited(loadStreet());
+    });
+    s.on('robbed', (_) async {
+      await refreshMe();
+      unawaited(loadRobRecords());
+    });
     s.on('territory', (data) {
       _applyTerritory(data);
       notifyListeners();

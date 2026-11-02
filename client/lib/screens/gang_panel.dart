@@ -859,6 +859,7 @@ class _NewsTickerState extends State<NewsTicker> {
     final c = switch (n.kind) {
       'war' => UW.crimson,
       'gang' => UW.neon,
+      'crime' => const Color(0xFF8E44AD),
       _ => UW.gold,
     };
     return Container(

@@ -156,6 +156,23 @@ async function initDB() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
 
+      ALTER TABLE players ADD COLUMN IF NOT EXISTS protected_until TIMESTAMPTZ NOT NULL DEFAULT now() + interval '2 hours';
+
+      CREATE TABLE IF NOT EXISTS robberies (
+        id SERIAL PRIMARY KEY,
+        attacker_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        target_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        district_id VARCHAR(32) NOT NULL,
+        success BOOLEAN NOT NULL,
+        outcome VARCHAR(16) NOT NULL,
+        cash BIGINT NOT NULL DEFAULT 0,
+        goods JSONB NOT NULL DEFAULT '[]',
+        seen BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS robberies_target ON robberies(target_id, id DESC);
+      CREATE INDEX IF NOT EXISTS robberies_attacker ON robberies(attacker_id, id DESC);
+
       CREATE TABLE IF NOT EXISTS trades (
         id SERIAL PRIMARY KEY,
         user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
