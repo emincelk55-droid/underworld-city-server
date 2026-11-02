@@ -17,7 +17,8 @@
 const { GameError, lockPlayer, activeTravel, spendEnergy, resolveArrivals, cargo, cargoWeight } = require("./game");
 const { gangOf, addInfluence, addNews } = require("./influence");
 
-const ROB_ENERGY = 20;
+const ECON = require("./economy");
+const ROB_ENERGY = ECON.ROB_ENERGY;
 const VICTIM_PROTECT_MIN = 30;
 const REVENGE_HOURS = 24;
 
@@ -183,8 +184,8 @@ async function rob(pool, userId, targetId) {
       outcome = "success";
       const tLevel = levelOf(target.xp);
       cash = Math.min(
-        Math.floor(Number(target.money) * (0.1 + Math.random() * 0.1)),
-        2000 + 400 * tLevel
+        Math.floor(Number(target.money) * (ECON.ROB_CASH_MIN + Math.random() * (ECON.ROB_CASH_MAX - ECON.ROB_CASH_MIN))),
+        ECON.ROB_CASH_CAP(tLevel)
       );
       if (cash > 0) {
         await client.query("UPDATE players SET money = money - $2 WHERE user_id=$1", [targetId, cash]);

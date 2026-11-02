@@ -142,6 +142,7 @@ class GameState extends ChangeNotifier {
     districts = (w['districts'] as List).map((e) => District.fromJson(e)).toList();
     goods = (w['goods'] as List).map((e) => Good.fromJson(e)).toList();
     travelEnergy = w['travelEnergy'] ?? 10;
+    Price.spread = (w['npcSpread'] as num?)?.toDouble() ?? Price.spread;
     _applyPrices(await _req('GET', '/api/prices'));
   }
 

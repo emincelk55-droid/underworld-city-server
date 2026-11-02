@@ -51,11 +51,11 @@ Tasarım planı: [`docs/OYUN_PLANI.md`](docs/OYUN_PLANI.md)
 
 | İşletme | Tür | Semtler | Üretim |
 |---|---|---|---|
-| İmalathane | Üretim | Liman, Fabrika, Gecekondu | 3 Şeker → 2 Kaçak İçki (15 dk) |
-| Atölye | Üretim | Fabrika, Gecekondu | 4 Hurda → 1 Radyo (15 dk) · 6 Hurda + 1 Radyo → 1 Silah (30 dk) |
-| Matbaa | Üretim | Fabrika, Çarşı, Merkez | 4 Kağıt → 1 Sahte Belge (20 dk) |
-| Kahvehane | Paravan | Liman, Çarşı, Gecekondu, Merkez | 1 Kahve → ₺110 kasaya (5 dk) |
-| Gece Kulübü | Paravan | Villalar, Merkez, Çarşı | 1 Kaçak İçki → ₺300 kasaya + 3 nüfuz (5 dk) |
+| İmalathane | Üretim | Liman, Fabrika, Gecekondu | 3 Şeker → 1 Kaçak İçki (30 dk) |
+| Atölye | Üretim | Fabrika, Gecekondu | 6 Hurda → 1 Radyo (1 sa) · 6 Hurda + 1 Radyo → 1 Silah (2 sa) |
+| Matbaa | Üretim | Fabrika, Çarşı, Merkez | 8 Kağıt → 1 Sahte Belge (4 sa) |
+| Kahvehane | Paravan | Liman, Çarşı, Gecekondu, Merkez | 4 Kahve → ₺255 kasaya (1 sa) |
+| Gece Kulübü | Paravan | Villalar, Merkez, Çarşı | 3 Kaçak İçki → ₺560 kasaya + 4 nüfuz (1 sa) |
 
 - Yeni ham maddeler: **Şeker** (Liman'da ucuz), **Hurda Metal** (Gecekondu'da ucuz), **Kağıt** (Fabrika'da ucuz)
 - Ham maddeyi işletmeye o semtteyken yüklersin (çantandan ya da o semtteki depodan). Üretilen mal o semtteki depoya gider, paravan işletmeler parayı kasaya yazar
@@ -63,6 +63,13 @@ Tasarım planı: [`docs/OYUN_PLANI.md`](docs/OYUN_PLANI.md)
 - 3 seviye var. Hız ×1, ×1.5 ve ×2.2 olur, ambar 60, 120 ve 240 birime çıkar. Satarsan yatırımın yarısı ve kasadaki para geri gelir
 - Kaçak mal üreten işletmelere polis baskını yapabilir: ham maddenin yarısına el konur ve işletme 30 dakika kapanır. Kendi ailenin bölgesinde risk yarıya iner
 - Kişi başı en fazla 4 işletme olabilir. Haritada işletmelerinin olduğu semtlerde bina simgesi görünür
+
+### Ekonomi dengesi
+Tüm fiyatlar, kazançlar ve süreler [`src/economy.js`](src/economy.js) dosyasında. Ticarium, TürkMafya, Torn ve EVE araştırmasına dayanan hedefler ve önce/sonra karşılaştırması [`docs/EKONOMI.md`](docs/EKONOMI.md) içinde. Bir sayıyı değiştirdikten sonra şu komutla kontrol et:
+
+```bash
+node scripts/economy-sim.js
+```
 
 ## Yapı
 - `server.js`, `src/`: Node.js + Express + Socket.io + PostgreSQL sunucusu

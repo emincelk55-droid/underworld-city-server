@@ -21,7 +21,7 @@ app.use(cors());
 app.use(express.json());
 
 // ====== CONFIG ======
-const START_MONEY = 5000;
+const START_MONEY = require("./src/economy").START_MONEY;
 const DEV_ENDPOINTS = process.env.ENABLE_DEV_ENDPOINTS === "true";
 const TICK_MS = 10_000;
 

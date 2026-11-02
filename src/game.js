@@ -1,4 +1,5 @@
 const { gangOf, addInfluence } = require("./influence");
+const ECON = require("./economy");
 
 // Oyun kuralları: enerji, fiyatlar, ticaret, yolculuk.
 // Para ve envanteri değiştiren her işlem bir transaction içinde, ilgili satırlar
@@ -9,8 +10,7 @@ const ENERGY_REGEN_SECONDS = 360; // 6 dakikada 1 enerji, saatte 10
 const TRAVEL_ENERGY = 10;
 const TRAVEL_SECONDS_PER_UNIT = Number(process.env.TRAVEL_SECONDS_PER_UNIT || 120);
 const TRAVEL_MIN_SECONDS = 15;
-const NPC_SPREAD = 0.03; // NPC'den alırken +%3, satarken -%3
-const PRICE_IMPACT = 0.004; // işlem gören her birim fiyatı %0.4 kaydırır
+const NPC_SPREAD = ECON.NPC_SPREAD;
 const PRICE_MIN_FACTOR = 0.4;
 const PRICE_MAX_FACTOR = 2.5;
 
@@ -109,7 +109,7 @@ async function trade(pool, userId, { goodId, qty, side }) {
     const market = dg.rows[0];
 
     // Ortalama fiyat: işlem fiyatı, kaydırmanın yarısı kadar etkilenir.
-    const impact = PRICE_IMPACT * qty;
+    const impact = ECON.impactPerUnit({ id: goodId }) * qty;
     let unit, newPrice;
     if (side === "buy") {
       unit = npcBuyPrice(market.price * (1 + impact / 2));
@@ -210,7 +210,7 @@ function travelSeconds(from, to) {
 function rollEvent(dest, origin, rows, money, gangId = null) {
   const ownTurf = gangId && dest.controller_gang_id === gangId;
   const hotness = rows.reduce((s, r) => s + r.qty * r.heat, 0);
-  const pPolice = Math.min(0.85, dest.police * (ownTurf ? 0.5 : 1) * (hotness / 90));
+  const pPolice = Math.min(0.85, dest.police * (ownTurf ? 0.5 : 1) * (hotness / ECON.HEAT_DIVISOR));
   if (hotness > 0 && Math.random() < pPolice) {
     const seized = rows
       .filter((r) => r.heat > 0)
@@ -420,7 +420,8 @@ async function getWorld(pool) {
       heat: r.heat,
       icon: r.icon
     })),
-    travelEnergy: TRAVEL_ENERGY
+    travelEnergy: TRAVEL_ENERGY,
+    npcSpread: NPC_SPREAD
   };
 }
 
@@ -462,7 +463,7 @@ async function leaderboard(pool) {
 async function tickPrices(pool) {
   await pool.query(`
     UPDATE district_goods SET price = LEAST(anchor * ${PRICE_MAX_FACTOR}, GREATEST(anchor * ${PRICE_MIN_FACTOR},
-      price + (anchor - price) * 0.08 + anchor * (random() - 0.5) * 0.03))`);
+      price + (anchor - price) * ${ECON.PRICE_REVERT} + anchor * (random() - 0.5) * ${ECON.PRICE_NOISE}))`);
 }
 
 module.exports = {

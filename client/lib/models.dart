@@ -29,7 +29,9 @@ class Price {
   const Price(this.buy, this.sell, this.anchor);
   factory Price.fromJson(Map<String, dynamic> j) =>
       Price((j['buy'] as num).toDouble(), (j['sell'] as num).toDouble(), (j['anchor'] as num).toDouble());
-  factory Price.fromRaw(double raw, double anchor) => Price(raw * 1.03, raw * 0.97, anchor);
+  /// Tüccar makası sunucudan gelir (/api/world → npcSpread)
+  static double spread = 0.05;
+  factory Price.fromRaw(double raw, double anchor) => Price(raw * (1 + spread), raw * (1 - spread), anchor);
   double get mid => (buy + sell) / 2;
 }
 

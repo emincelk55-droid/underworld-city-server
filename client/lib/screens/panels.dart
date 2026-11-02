@@ -190,7 +190,8 @@ class _TradeSheetState extends State<TradeSheet> {
 
   int _max(PlayerState me, Price p) {
     if (side == 'sell') return me.qtyOf(widget.good.id);
-    final byMoney = (me.money / (p.buy * 1.02)).floor();
+    // Fiyat etkisi için küçük bir pay bırak
+    final byMoney = (me.money / (p.buy * 1.04)).floor();
     final free = me.capacity - me.load;
     final byCap = widget.good.weight == 0 ? 1000 : (free / widget.good.weight).floor();
     return math.max(0, math.min(1000, math.min(byMoney, byCap)));

@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+const ECON = require("./economy");
 
 const useSsl =
   process.env.DATABASE_SSL === "false"
@@ -276,7 +277,7 @@ async function initDB() {
     }
     for (const d of DISTRICTS) {
       for (const g of GOODS) {
-        const anchor = g.base * PRICE_MODS[d.id][g.id];
+        const anchor = anchorOf(d.id, g.id);
         await client.query(
           `INSERT INTO district_goods (district_id, good_id, anchor, price)
            VALUES ($1,$2,$3,$3)
@@ -296,4 +297,11 @@ async function initDB() {
   }
 }
 
-module.exports = { pool, initDB, DISTRICTS, GOODS };
+// Semtteki NPC çapa fiyatı
+function anchorOf(districtId, goodId) {
+  const g = GOODS.find((x) => x.id === goodId);
+  // Semtler arası fark ECON.PRICE_EXPONENT ile sıkıştırılır
+  return g.base * Math.pow(PRICE_MODS[districtId][goodId], ECON.PRICE_EXPONENT);
+}
+
+module.exports = { pool, initDB, DISTRICTS, GOODS, PRICE_MODS, anchorOf };

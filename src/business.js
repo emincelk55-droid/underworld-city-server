@@ -13,65 +13,14 @@ const { GameError, lockPlayer, activeTravel, resolveArrivals, cargo } = require(
 const { gangOf, addInfluence, addNews } = require("./influence");
 const { addStorage } = require("./market");
 
-const MAX_BUSINESSES = 4;
-const SPEED = [1, 1.5, 2.2];
-const STOCK_CAP = [60, 120, 240];
-const RAID_CLOSE_MIN = 30;
+const ECON = require("./economy");
+const MAX_BUSINESSES = ECON.MAX_BUSINESSES;
+const SPEED = ECON.BUSINESS_SPEED;
+const STOCK_CAP = ECON.STOCK_CAP;
+const RAID_CLOSE_MIN = ECON.RAID_CLOSE_MIN;
+const TYPES = ECON.BUSINESS_TYPES;
 
-const TYPES = {
-  imalathane: {
-    name: "İmalathane",
-    kind: "production",
-    desc: "Bodrumda kazanlar. Şekerden kaçak içki damıtılır.",
-    cost: 4000,
-    rent: 60,
-    districts: ["liman", "fabrika", "gecekondu"],
-    recipes: [{ id: "icki", name: "Kaçak İçki damıt", inputs: { seker: 3 }, outputs: { icki: 2 }, seconds: 900 }]
-  },
-  atolye: {
-    name: "Atölye",
-    kind: "production",
-    desc: "Tornalar ve lehim kokusu. Hurdadan radyo ve silah çıkar.",
-    cost: 6000,
-    rent: 90,
-    districts: ["fabrika", "gecekondu"],
-    recipes: [
-      { id: "radyo", name: "Radyo topla", inputs: { hurda: 4 }, outputs: { radyo: 1 }, seconds: 900 },
-      { id: "silah", name: "Silah dök", inputs: { hurda: 6, radyo: 1 }, outputs: { silah: 1 }, seconds: 1800 }
-    ]
-  },
-  matbaa: {
-    name: "Matbaa",
-    kind: "production",
-    desc: "Gece vardiyasında baskı makineleri. Kağıttan sahte belge.",
-    cost: 5000,
-    rent: 75,
-    districts: ["fabrika", "carsi", "merkez"],
-    recipes: [{ id: "belge", name: "Sahte belge bas", inputs: { kagit: 4 }, outputs: { belge: 1 }, seconds: 1200 }]
-  },
-  kahvehane: {
-    name: "Kahvehane",
-    kind: "front",
-    desc: "Tavla şakırtısı ve dumanlı sohbetler. Kahve satar, kasaya para akar.",
-    cost: 3000,
-    rent: 40,
-    districts: ["liman", "carsi", "gecekondu", "merkez"],
-    recipes: [{ id: "kahve_sat", name: "Kahve servisi", inputs: { kahve: 1 }, outputs: {}, cash: 110, seconds: 300 }]
-  },
-  gece_kulubu: {
-    name: "Gece Kulübü",
-    kind: "front",
-    desc: "Caz, ipek perdeler ve arka oda. İçki satar, aileye nüfuz kazandırır.",
-    cost: 8000,
-    rent: 120,
-    districts: ["villalar", "merkez", "carsi"],
-    recipes: [
-      { id: "icki_sat", name: "Bar servisi", inputs: { icki: 1 }, outputs: {}, cash: 300, influence: 3, seconds: 300 }
-    ]
-  }
-};
-
-const upgradeCost = (type, level) => Math.round(TYPES[type].cost * level * 0.8);
+const upgradeCost = (type, level) => Math.round(TYPES[type].cost * level * ECON.UPGRADE_FACTOR);
 
 async function tx(pool, fn, retries = 3) {
   for (let attempt = 0; ; attempt++) {
