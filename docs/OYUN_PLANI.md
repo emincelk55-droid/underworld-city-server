@@ -65,7 +65,7 @@ Her malın:
 - Satıştan %3 pazar vergisi alınır. Bu bir para gideridir. Semti kontrol eden çete verginin bir kısmını alır.
 - NPC tüccarları likidite sağlar ama fiyatları kötüdür. Bu sayede oyuncular birbirleriyle ticaret yapmaya yönelir.
 
-### 3.5 İşletmeler ve üretim
+### 3.5 İşletmeler ve üretim (✅ yapıldı)
 - Paravan işletmeler: Kahvehane, gece kulübü, depo, atölye.
 - Üretim zinciri örneği: ham madde → atölye → radyo. Üretim zaman alır ve işletmenin bakım ücreti vardır.
 - Depo, polis baskınlarından korunan güvenli stok alanı sağlar.

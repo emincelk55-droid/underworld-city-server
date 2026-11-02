@@ -62,6 +62,17 @@ class GameState extends ChangeNotifier {
   List<MyOrder> myOrders = [];
   List<StorageItem> storage = [];
 
+  // İşletmeler
+  List<BusinessType> businessTypes = [];
+  List<Business> businesses = [];
+
+  BusinessType? businessType(String id) {
+    for (final t in businessTypes) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
   /// Ekranda gösterilecek kısa bildirimler (mesaj, hata mı)
   final List<(String, bool)> toasts = [];
 
@@ -169,9 +180,13 @@ class GameState extends ChangeNotifier {
     unawaited(loadStreet());
     unawaited(loadMarketSummary());
     unawaited(loadMyMarket());
+    unawaited(loadBusinessTypes());
+    unawaited(loadBusinesses());
     _streetTimer?.cancel();
     _streetTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (token != null) unawaited(loadStreet().catchError((_) {}));
+      if (token == null) return;
+      unawaited(loadStreet().catchError((_) {}));
+      if (businesses.isNotEmpty) unawaited(loadBusinesses().catchError((_) {}));
     });
   }
 
@@ -225,6 +240,55 @@ class GameState extends ChangeNotifier {
     final r = await _req('POST', '/api/storage/collect', {'goodId': goodId, 'qty': ?qty});
     await _afterMarket(me!.districtId, goodId);
     return r['collected'] as int;
+  }
+
+  // ====== İŞLETMELER ======
+  Future<void> loadBusinessTypes() async {
+    businessTypes = (await _req('GET', '/api/business/types') as List).map((e) => BusinessType.fromJson(e)).toList();
+    notifyListeners();
+  }
+
+  Future<void> loadBusinesses() async {
+    businesses = (await _req('GET', '/api/businesses') as List).map((e) => Business.fromJson(e)).toList();
+    notifyListeners();
+  }
+
+  Future<void> _afterBusiness() async {
+    await refreshMe();
+    await Future.wait([loadBusinesses(), loadMyMarket()]);
+  }
+
+  Future<void> buyBusiness(String type) async {
+    await _req('POST', '/api/business/buy', {'type': type});
+    await _afterBusiness();
+  }
+
+  Future<int> loadBusiness(int id, String goodId, int qty) async {
+    final r = await _req('POST', '/api/business/$id/load', {'goodId': goodId, 'qty': qty});
+    await _afterBusiness();
+    return r['loaded'] as int;
+  }
+
+  Future<int> collectTill(int id) async {
+    final r = await _req('POST', '/api/business/$id/collect');
+    await _afterBusiness();
+    return r['collected'] as int;
+  }
+
+  Future<void> upgradeBusiness(int id) async {
+    await _req('POST', '/api/business/$id/upgrade');
+    await _afterBusiness();
+  }
+
+  Future<void> setRecipe(int id, String recipeId) async {
+    await _req('POST', '/api/business/$id/recipe', {'recipeId': recipeId});
+    await _afterBusiness();
+  }
+
+  Future<int> sellBusiness(int id) async {
+    final r = await _req('POST', '/api/business/$id/sell');
+    await _afterBusiness();
+    return r['received'] as int;
   }
 
   // ====== SOKAK ======
@@ -422,6 +486,11 @@ class GameState extends ChangeNotifier {
       toasts.add(('Bir borsa emrinin süresi doldu ve iptal edildi', false));
       await refreshMe();
       unawaited(loadMyMarket());
+    });
+    s.on('business_raid', (data) async {
+      final where = district(data['districtId'] ?? '')?.name ?? '';
+      toasts.add(('Polis baskını! $where\'daki ${data['name']} 30 dakika kapalı, hammaddenin yarısına el konuldu', true));
+      await loadBusinesses();
     });
     s.on('robbed', (_) async {
       await refreshMe();

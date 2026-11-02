@@ -357,3 +357,70 @@ class StorageItem {
         qty = j['qty'],
         avgCost = j['avgCost'];
 }
+
+// ====================== İŞLETMELER ======================
+class Recipe {
+  final String id, name;
+  final Map<String, int> inputs, outputs;
+  final int cash, influence, seconds;
+  Recipe.fromJson(Map<String, dynamic> j)
+      : id = j['id'],
+        name = j['name'],
+        inputs = Map<String, int>.from(j['inputs']),
+        outputs = Map<String, int>.from(j['outputs']),
+        cash = j['cash'] ?? 0,
+        influence = j['influence'] ?? 0,
+        seconds = j['seconds'];
+}
+
+class BusinessType {
+  final String id, name, kind, desc;
+  final int cost, rent;
+  final List<String> districts;
+  final List<Recipe> recipes;
+  BusinessType.fromJson(Map<String, dynamic> j)
+      : id = j['id'],
+        name = j['name'],
+        kind = j['kind'],
+        desc = j['desc'],
+        cost = j['cost'],
+        rent = j['rent'],
+        districts = List<String>.from(j['districts']),
+        recipes = (j['recipes'] as List).map((e) => Recipe.fromJson(e)).toList();
+}
+
+class Business {
+  final int id, level, maxLevel, rent, stockTotal, stockCap, till, producedTotal, sellValue;
+  final int? upgradeCost, batchSeconds, batchesLeft;
+  final String type, name, kind, districtId, status;
+  final String? recipeId;
+  final double progress, speed;
+  final DateTime? nextBatchAt, closedUntil;
+  final DateTime rentPaidUntil;
+  final Map<String, int> stock;
+  Business.fromJson(Map<String, dynamic> j)
+      : id = j['id'],
+        level = j['level'],
+        maxLevel = j['maxLevel'],
+        rent = j['rent'],
+        stockTotal = j['stockTotal'],
+        stockCap = j['stockCap'],
+        till = (j['till'] as num).toInt(),
+        producedTotal = j['producedTotal'],
+        sellValue = j['sellValue'],
+        upgradeCost = j['upgradeCost'],
+        batchSeconds = j['batchSeconds'],
+        batchesLeft = j['batchesLeft'],
+        type = j['type'],
+        name = j['name'],
+        kind = j['kind'],
+        districtId = j['districtId'],
+        status = j['status'],
+        recipeId = j['recipeId'],
+        progress = (j['progress'] as num).toDouble(),
+        speed = (j['speed'] as num).toDouble(),
+        nextBatchAt = j['nextBatchAt'] == null ? null : DateTime.parse(j['nextBatchAt']),
+        closedUntil = j['closedUntil'] == null ? null : DateTime.parse(j['closedUntil']),
+        rentPaidUntil = DateTime.parse(j['rentPaidUntil']),
+        stock = Map<String, int>.from(j['stock']);
+}

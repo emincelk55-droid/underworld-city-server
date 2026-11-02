@@ -44,6 +44,26 @@ Tasarım planı: [`docs/OYUN_PLANI.md`](docs/OYUN_PLANI.md)
 - Fiyat sınırı semtteki tüccar fiyatının %30'u ile 3 katı arasındadır. Kişi başı en fazla 10 açık emir olabilir. Emirler 72 saat sonra iptal olur ve emanetteki para ya da mal iade edilir
 - Defterde derinlik çubukları, makas, son işlemler ve bir fiyat grafiği var. Forma girdiğin emrin hemen ne kadar eşleşeceği önceden gösterilir. Emrin dolunca anında bildirim gelir
 
+### İşletmeler ve üretim
+| İşletmeler | Polis baskını | Mobil |
+|---|---|---|
+| ![](docs/screenshots/business_list.png) | ![](docs/screenshots/business_raid.png) | ![](docs/screenshots/business_mobile.png) |
+
+| İşletme | Tür | Semtler | Üretim |
+|---|---|---|---|
+| İmalathane | Üretim | Liman, Fabrika, Gecekondu | 3 Şeker → 2 Kaçak İçki (15 dk) |
+| Atölye | Üretim | Fabrika, Gecekondu | 4 Hurda → 1 Radyo (15 dk) · 6 Hurda + 1 Radyo → 1 Silah (30 dk) |
+| Matbaa | Üretim | Fabrika, Çarşı, Merkez | 4 Kağıt → 1 Sahte Belge (20 dk) |
+| Kahvehane | Paravan | Liman, Çarşı, Gecekondu, Merkez | 1 Kahve → ₺110 kasaya (5 dk) |
+| Gece Kulübü | Paravan | Villalar, Merkez, Çarşı | 1 Kaçak İçki → ₺300 kasaya + 3 nüfuz (5 dk) |
+
+- Yeni ham maddeler: **Şeker** (Liman'da ucuz), **Hurda Metal** (Gecekondu'da ucuz), **Kağıt** (Fabrika'da ucuz)
+- Ham maddeyi işletmeye o semtteyken yüklersin (çantandan ya da o semtteki depodan). Üretilen mal o semtteki depoya gider, paravan işletmeler parayı kasaya yazar
+- Kira saatlik ve peşin ödenir. Paran yetmezse üretim durur, para gelince kaldığı yerden devam eder
+- 3 seviye var. Hız ×1, ×1.5 ve ×2.2 olur, ambar 60, 120 ve 240 birime çıkar. Satarsan yatırımın yarısı ve kasadaki para geri gelir
+- Kaçak mal üreten işletmelere polis baskını yapabilir: ham maddenin yarısına el konur ve işletme 30 dakika kapanır. Kendi ailenin bölgesinde risk yarıya iner
+- Kişi başı en fazla 4 işletme olabilir. Haritada işletmelerinin olduğu semtlerde bina simgesi görünür
+
 ## Yapı
 - `server.js`, `src/`: Node.js + Express + Socket.io + PostgreSQL sunucusu
 - `client/`: Flutter istemcisi (web, Android, iOS)
@@ -93,5 +113,11 @@ cd client && flutter build web --release
 | POST | `/api/market/cancel` | `{orderId}` |
 | GET | `/api/market/orders`, `/api/storage` | Açık emirlerin, depoların |
 | POST | `/api/storage/collect` | `{goodId, qty?}`: depodan çantaya |
+| GET | `/api/business/types` | İşletme türleri, tarifler, semtler |
+| GET | `/api/businesses` | İşletmelerin (kira ve üretim hesaplanmış durumda) |
+| POST | `/api/business/buy` | `{type}`: bulunduğun semtte işletme aç |
+| POST | `/api/business/:id/load` | `{goodId, qty}`: ham madde yükle |
+| POST | `/api/business/:id/recipe` | `{recipeId}` |
+| POST | `/api/business/:id/collect`, `/upgrade`, `/sell` | Kasayı boşalt, yükselt, sat |
 
-Socket.io olayları: `prices`, `price`, `chat` (`channel: global|gang`), `online`, `arrived`, `territory`, `news`, `gang`, `robbed`, `book`, `order_filled`, `order_expired`.
+Socket.io olayları: `prices`, `price`, `chat` (`channel: global|gang`), `online`, `arrived`, `territory`, `news`, `gang`, `robbed`, `book`, `order_filled`, `order_expired`, `business_raid`.

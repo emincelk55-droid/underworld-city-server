@@ -9,6 +9,7 @@ import '../widgets/city_map.dart';
 import '../widgets/deco.dart';
 import '../widgets/crest.dart';
 import 'gang_panel.dart';
+import 'business.dart';
 import 'exchange.dart';
 import 'panels.dart';
 import 'street.dart';
@@ -120,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final map = _MapView(game: g, selected: _selected, onTap: _openDistrict, onStreet: _openStreet);
       final panels = [
         MarketTabs(game: g, toast: _toast),
-        InventoryPanel(game: g, toast: _toast),
+        PropertyTabs(game: g, toast: _toast),
         GangPanel(game: g, toast: _toast),
         LeaderboardPanel(game: g),
         ChatPanel(game: g),
@@ -144,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               _SideTabs(
                                 index: _sideTab,
                                 onChanged: (i) => setState(() => _sideTab = i),
-                                labels: const ['Pazar', 'Çanta', 'Aile', 'Sıralama', 'Sohbet'],
+                                labels: const ['Pazar', 'Mülk', 'Aile', 'Sıralama', 'Sohbet'],
                                 icons: const [Icons.storefront, Icons.work_outline, Icons.shield_outlined, Icons.emoji_events_outlined, Icons.forum_outlined],
                               ),
                               const SizedBox(height: 10),
@@ -197,6 +198,9 @@ class _MapView extends StatelessWidget {
               travel: travel,
               territory: game.territory,
               myGangId: me.gang?.id,
+              businessCounts: {
+                for (final b in game.businesses) b.districtId: (game.businesses.where((x) => x.districtId == b.districtId).length),
+              },
               onTap: onTap,
             ),
           ),
@@ -414,7 +418,7 @@ class _BottomNav extends StatelessWidget {
   static const _items = [
     (Icons.map_outlined, 'Şehir'),
     (Icons.storefront, 'Pazar'),
-    (Icons.work_outline, 'Çanta'),
+    (Icons.work_outline, 'Mülk'),
     (Icons.shield_outlined, 'Aile'),
     (Icons.emoji_events_outlined, 'Sıralama'),
     (Icons.forum_outlined, 'Sohbet'),

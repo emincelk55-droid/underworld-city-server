@@ -219,6 +219,9 @@ class GoodIcon extends StatelessWidget {
         'gun' => Icons.gps_fixed,
         'diamond' => Icons.diamond,
         'document' => Icons.badge,
+        'sugar' => Icons.grain,
+        'scrap' => Icons.hardware,
+        'paper' => Icons.description,
         _ => Icons.inventory_2,
       };
 
@@ -231,6 +234,9 @@ class GoodIcon extends StatelessWidget {
         'gun' => const Color(0xFF9AA5B1),
         'diamond' => const Color(0xFF8BE0F0),
         'document' => const Color(0xFFE3C67B),
+        'sugar' => const Color(0xFFEDE6D6),
+        'scrap' => const Color(0xFFB0855A),
+        'paper' => const Color(0xFFD9D2BF),
         _ => UW.gold,
       };
 

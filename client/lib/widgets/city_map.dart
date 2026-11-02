@@ -27,9 +27,11 @@ class CityMap extends StatefulWidget {
   final Travel? travel;
   final Map<String, Territory> territory;
   final int? myGangId;
+  final Map<String, int> businessCounts;
   final ValueChanged<District> onTap;
   const CityMap({
     super.key,
+    this.businessCounts = const {},
     this.territory = const {},
     this.myGangId,
     required this.districts,
@@ -87,6 +89,7 @@ class _CityMapState extends State<CityMap> with SingleTickerProviderStateMixin {
                 travel: widget.travel,
                 territory: widget.territory,
                 myGangId: widget.myGangId,
+                businessCounts: widget.businessCounts,
                 now: DateTime.now(),
               ),
             ),
@@ -105,9 +108,11 @@ class _MapPainter extends CustomPainter {
   final Travel? travel;
   final Map<String, Territory> territory;
   final int? myGangId;
+  final Map<String, int> businessCounts;
   final DateTime now;
 
   _MapPainter({
+    required this.businessCounts,
     required this.territory,
     required this.myGangId,
     required this.t,
@@ -450,6 +455,10 @@ class _MapPainter extends CustomPainter {
     final ctrl = ter?.controller;
     if (ctrl != null) _pennant(canvas, p + Offset(r + 4, -r + 2), hexColor(ctrl.color), ctrl.tag, ctrl.id == myGangId);
 
+    // Sahip olduğun işletmeler: küçük bina simgesi
+    final bc = businessCounts[d.id] ?? 0;
+    if (bc > 0) _buildingBadge(canvas, p + Offset(-r - 20, -r + 4), bc);
+
     // Polis yıldızları
     final stars = (d.police * 5).round().clamp(0, 5);
     for (var i = 0; i < stars; i++) {
@@ -490,6 +499,32 @@ class _MapPainter extends CustomPainter {
           const Radius.circular(2));
       canvas.drawRRect(pr, Paint()..color = UW.gold);
       pin.paint(canvas, Offset(pr.left + 6, pr.top + 2));
+    }
+  }
+
+  void _buildingBadge(Canvas canvas, Offset c, int count) {
+    // Art deco mini bina: basamaklı tepe, yanan pencereler
+    final body = Rect.fromCenter(center: c + const Offset(0, 3), width: 16, height: 16);
+    canvas.drawRect(body.inflate(3), Paint()..color = Colors.black54..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+    canvas.drawRect(Rect.fromLTWH(body.left + 4, body.top - 4, 8, 4), Paint()..color = UW.gold);
+    canvas.drawRect(Rect.fromLTWH(body.left + 7, body.top - 7, 2, 3), Paint()..color = UW.gold);
+    canvas.drawRect(body, Paint()..color = const Color(0xFF231A10));
+    canvas.drawRect(body, Paint()..color = UW.gold..style = PaintingStyle.stroke..strokeWidth = 1.2);
+    final glow = 0.6 + 0.4 * math.sin(t * math.pi * 2 * 2);
+    for (var i = 0; i < 2; i++) {
+      for (var j = 0; j < 2; j++) {
+        canvas.drawRect(Rect.fromLTWH(body.left + 3 + i * 6, body.top + 3 + j * 6, 4, 3),
+            Paint()..color = const Color(0xFFFFC870).withValues(alpha: glow));
+      }
+    }
+    if (count > 1) {
+      final bp = body.topRight + const Offset(1, -1);
+      canvas.drawCircle(bp, 6, Paint()..color = UW.crimson);
+      final tp = TextPainter(
+        text: TextSpan(text: '$count', style: UW.body(8.5, color: Colors.white, weight: FontWeight.w900)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, bp - Offset(tp.width / 2, tp.height / 2));
     }
   }
 

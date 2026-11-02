@@ -423,4 +423,4 @@ async function storage(pool, userId) {
   return r.rows.map((s) => ({ districtId: s.district_id, goodId: s.good_id, qty: s.qty, avgCost: Math.round(s.avg_cost) }));
 }
 
-module.exports = { placeOrder, cancelOrder, expireOrders, collect, summary, book, myOrders, storage, MAX_OPEN };
+module.exports = { placeOrder, cancelOrder, expireOrders, collect, summary, book, myOrders, storage, addStorage, MAX_OPEN };

@@ -11,6 +11,7 @@ const game = require("./src/game");
 const gangs = require("./src/gangs");
 const pvp = require("./src/pvp");
 const market = require("./src/market");
+const business = require("./src/business");
 
 const app = express();
 const server = http.createServer(app);
@@ -327,6 +328,25 @@ app.post(
 );
 app.post("/api/storage/collect", auth, handle(async (req, res) => res.json(await market.collect(pool, req.user.id, req.body || {}))));
 
+// ====== İŞLETMELER ======
+app.get("/api/business/types", handle(async (req, res) => res.json(business.types())));
+app.get("/api/businesses", auth, handle(async (req, res) => res.json(await business.list(pool, req.user.id))));
+app.post("/api/business/buy", auth, handle(async (req, res) => {
+  const r = await business.buy(pool, req.user.id, String(req.body?.type || ""));
+  pushNews();
+  res.json(r);
+}));
+app.post("/api/business/:id/recipe", auth, handle(async (req, res) =>
+  res.json(await business.setRecipe(pool, req.user.id, req.params.id, String(req.body?.recipeId || "")))));
+app.post("/api/business/:id/load", auth, handle(async (req, res) =>
+  res.json(await business.load(pool, req.user.id, req.params.id, req.body || {}))));
+app.post("/api/business/:id/collect", auth, handle(async (req, res) =>
+  res.json(await business.collectTill(pool, req.user.id, req.params.id))));
+app.post("/api/business/:id/upgrade", auth, handle(async (req, res) =>
+  res.json(await business.upgrade(pool, req.user.id, req.params.id))));
+app.post("/api/business/:id/sell", auth, handle(async (req, res) =>
+  res.json(await business.sell(pool, req.user.id, req.params.id))));
+
 // Sadece geliştirme: ENABLE_DEV_ENDPOINTS=true iken açık. Canlıda ekonomiyi bozar.
 if (DEV_ENDPOINTS) {
   app.post(
@@ -395,6 +415,7 @@ io.on("connection", async (socket) => {
 });
 
 // ====== TICK ======
+let tickCount = 0;
 async function tick() {
   try {
     await game.tickPrices(pool);
@@ -414,6 +435,12 @@ async function tick() {
     for (const o of await market.expireOrders(pool)) {
       io.to(`user:${o.user_id}`).emit("order_expired", { goodId: o.good_id, districtId: o.district_id });
       io.emit("book", { districtId: o.district_id, goodId: o.good_id });
+    }
+    // İşletmeler dakikada bir hesaplanır
+    if (++tickCount % 6 === 0) {
+      const raids = await business.tickAll(pool, 1);
+      for (const r of raids) io.to(`user:${r.userId}`).emit("business_raid", r);
+      if (raids.length) pushNews();
     }
     const changes = await gangs.resolveWars(pool);
     await pushTerritory();

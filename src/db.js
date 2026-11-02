@@ -31,17 +31,21 @@ const GOODS = [
   { id: "radyo", name: "Radyo", base: 380, weight: 4, heat: 1, icon: "radio" },
   { id: "silah", name: "Silah", base: 900, weight: 3, heat: 8, icon: "gun" },
   { id: "mucevher", name: "Mücevher", base: 1500, weight: 1, heat: 5, icon: "diamond" },
-  { id: "belge", name: "Sahte Belge", base: 650, weight: 0, heat: 6, icon: "document" }
+  { id: "belge", name: "Sahte Belge", base: 650, weight: 0, heat: 6, icon: "document" },
+  // Ham maddeler (işletmelerde işlenir)
+  { id: "seker", name: "Şeker", base: 22, weight: 1, heat: 0, icon: "sugar" },
+  { id: "hurda", name: "Hurda Metal", base: 38, weight: 2, heat: 0, icon: "scrap" },
+  { id: "kagit", name: "Kağıt", base: 18, weight: 1, heat: 0, icon: "paper" }
 ];
 
 // Semt × mal fiyat çarpanı (1 = taban fiyat). <1 ucuz (al), >1 pahalı (sat).
 const PRICE_MODS = {
-  liman:     { icki: 0.6,  tutun: 0.6,  kahve: 0.7,  ilac: 1.0,  radyo: 1.1,  silah: 0.9,  mucevher: 1.1,  belge: 1.2 },
-  fabrika:   { icki: 1.0,  tutun: 0.9,  kahve: 1.2,  ilac: 0.8,  radyo: 0.65, silah: 0.8,  mucevher: 1.0,  belge: 1.0 },
-  carsi:     { icki: 1.05, tutun: 1.05, kahve: 1.0,  ilac: 1.05, radyo: 1.05, silah: 1.05, mucevher: 1.0,  belge: 1.0 },
-  villalar:  { icki: 1.6,  tutun: 1.3,  kahve: 1.4,  ilac: 1.3,  radyo: 1.35, silah: 1.1,  mucevher: 1.5,  belge: 1.2 },
-  gecekondu: { icki: 0.9,  tutun: 1.1,  kahve: 0.9,  ilac: 1.5,  radyo: 0.9,  silah: 1.55, mucevher: 0.6,  belge: 0.7 },
-  merkez:    { icki: 1.3,  tutun: 1.2,  kahve: 1.1,  ilac: 1.1,  radyo: 1.2,  silah: 1.4,  mucevher: 1.3,  belge: 1.6 }
+  liman:     { icki: 0.6,  tutun: 0.6,  kahve: 0.7,  ilac: 1.0,  radyo: 1.1,  silah: 0.9,  mucevher: 1.1,  belge: 1.2, seker: 0.6,  hurda: 0.8,  kagit: 1.0 },
+  fabrika:   { icki: 1.0,  tutun: 0.9,  kahve: 1.2,  ilac: 0.8,  radyo: 0.65, silah: 0.8,  mucevher: 1.0,  belge: 1.0, seker: 0.9,  hurda: 1.25, kagit: 0.6 },
+  carsi:     { icki: 1.05, tutun: 1.05, kahve: 1.0,  ilac: 1.05, radyo: 1.05, silah: 1.05, mucevher: 1.0,  belge: 1.0, seker: 1.0,  hurda: 1.0,  kagit: 1.0 },
+  villalar:  { icki: 1.6,  tutun: 1.3,  kahve: 1.4,  ilac: 1.3,  radyo: 1.35, silah: 1.1,  mucevher: 1.5,  belge: 1.2, seker: 1.4,  hurda: 1.3,  kagit: 1.2 },
+  gecekondu: { icki: 0.9,  tutun: 1.1,  kahve: 0.9,  ilac: 1.5,  radyo: 0.9,  silah: 1.55, mucevher: 0.6,  belge: 0.7, seker: 1.1,  hurda: 0.6,  kagit: 1.1 },
+  merkez:    { icki: 1.3,  tutun: 1.2,  kahve: 1.1,  ilac: 1.1,  radyo: 1.2,  silah: 1.4,  mucevher: 1.3,  belge: 1.6, seker: 1.2,  hurda: 1.1,  kagit: 1.3 }
 };
 
 async function initDB() {
@@ -211,6 +215,29 @@ async function initDB() {
         qty INT NOT NULL DEFAULT 0 CHECK (qty >= 0),
         avg_cost REAL NOT NULL DEFAULT 0,
         PRIMARY KEY (user_id, district_id, good_id)
+      );
+
+      -- İşletmeler
+      CREATE TABLE IF NOT EXISTS businesses (
+        id SERIAL PRIMARY KEY,
+        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        district_id VARCHAR(32) NOT NULL REFERENCES districts(id),
+        type VARCHAR(24) NOT NULL,
+        level INT NOT NULL DEFAULT 1,
+        recipe_id VARCHAR(24),
+        last_tick TIMESTAMPTZ NOT NULL DEFAULT now(),
+        rent_paid_until TIMESTAMPTZ NOT NULL DEFAULT now(),
+        closed_until TIMESTAMPTZ,
+        till BIGINT NOT NULL DEFAULT 0,
+        produced_total INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        UNIQUE (user_id, district_id, type)
+      );
+      CREATE TABLE IF NOT EXISTS business_stock (
+        business_id INT REFERENCES businesses(id) ON DELETE CASCADE,
+        good_id VARCHAR(32) REFERENCES goods(id),
+        qty INT NOT NULL DEFAULT 0 CHECK (qty >= 0),
+        PRIMARY KEY (business_id, good_id)
       );
 
       CREATE TABLE IF NOT EXISTS trades (
