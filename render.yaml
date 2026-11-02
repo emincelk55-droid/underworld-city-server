@@ -1,0 +1,25 @@
+# Render Blueprint: Dashboard → New → Blueprint → bu repoyu seç
+services:
+  - type: web
+    name: underworld-city
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: underworld-db
+          property: connectionString
+      - key: WAR_ROUND_MINUTES
+        value: "60"
+
+databases:
+  - name: underworld-db
+    plan: free
+    region: frankfurt
