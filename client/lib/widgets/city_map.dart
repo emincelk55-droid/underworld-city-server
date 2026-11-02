@@ -25,9 +25,13 @@ class CityMap extends StatefulWidget {
   final String? currentId;
   final String? selectedId;
   final Travel? travel;
+  final Map<String, Territory> territory;
+  final int? myGangId;
   final ValueChanged<District> onTap;
   const CityMap({
     super.key,
+    this.territory = const {},
+    this.myGangId,
     required this.districts,
     required this.currentId,
     required this.selectedId,
@@ -81,6 +85,8 @@ class _CityMapState extends State<CityMap> with SingleTickerProviderStateMixin {
                 currentId: widget.currentId,
                 selectedId: widget.selectedId,
                 travel: widget.travel,
+                territory: widget.territory,
+                myGangId: widget.myGangId,
                 now: DateTime.now(),
               ),
             ),
@@ -97,9 +103,13 @@ class _MapPainter extends CustomPainter {
   final List<District> districts;
   final String? currentId, selectedId;
   final Travel? travel;
+  final Map<String, Territory> territory;
+  final int? myGangId;
   final DateTime now;
 
   _MapPainter({
+    required this.territory,
+    required this.myGangId,
     required this.t,
     required this.area,
     required this.districts,
@@ -219,6 +229,32 @@ class _MapPainter extends CustomPainter {
       canvas.drawRect(Rect.fromLTWH(p.dx - 26, p.dy, 30, 4), Paint()..color = const Color(0xFF3A3020));
     }
     canvas.restore();
+
+    // Çete bölgeleri: kontrol eden çetenin renginde alan
+    for (final d in districts) {
+      final ter = territory[d.id];
+      final ctrl = ter?.controller;
+      if (ctrl == null) continue;
+      final gc = hexColor(ctrl.color);
+      final p = pos(d);
+      final rad = math.min(w, h) * 0.17;
+      canvas.drawCircle(
+          p,
+          rad,
+          Paint()
+            ..shader = RadialGradient(colors: [gc.withValues(alpha: 0.38), gc.withValues(alpha: 0.12), gc.withValues(alpha: 0)], stops: const [0, 0.7, 1])
+                .createShader(Rect.fromCircle(center: p, radius: rad)));
+      final ring = Paint()
+        ..color = gc.withValues(alpha: 0.75)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = ctrl.id == myGangId ? 2 : 1.2;
+      // kesikli sınır çizgisi (yavaşça döner)
+      const segs = 36;
+      for (var i = 0; i < segs; i += 2) {
+        final a0 = i * 2 * math.pi / segs + t * 0.6;
+        canvas.drawArc(Rect.fromCircle(center: p, radius: rad * 0.72), a0, 2 * math.pi / segs, false, ring);
+      }
+    }
 
     // Yollar
     final roadDark = Paint()
@@ -397,6 +433,23 @@ class _MapPainter extends CustomPainter {
     }
     canvas.drawCircle(p, 4.5, Paint()..color = isHere ? UW.goldLight : c);
 
+    // Çatışma halkası
+    final ter = territory[d.id];
+    if (ter != null && ter.contested) {
+      final ph = (t * 4) % 1.0;
+      canvas.drawCircle(
+          p,
+          r + 10 + ph * 6,
+          Paint()
+            ..color = UW.crimson.withValues(alpha: 0.9 - ph * 0.6)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.5);
+    }
+
+    // Kontrol eden çetenin bayrağı
+    final ctrl = ter?.controller;
+    if (ctrl != null) _pennant(canvas, p + Offset(r + 4, -r + 2), hexColor(ctrl.color), ctrl.tag, ctrl.id == myGangId);
+
     // Polis yıldızları
     final stars = (d.police * 5).round().clamp(0, 5);
     for (var i = 0; i < stars; i++) {
@@ -438,6 +491,37 @@ class _MapPainter extends CustomPainter {
       canvas.drawRRect(pr, Paint()..color = UW.gold);
       pin.paint(canvas, Offset(pr.left + 6, pr.top + 2));
     }
+  }
+
+  void _pennant(Canvas canvas, Offset base, Color color, String tag, bool mine) {
+    // Direk
+    canvas.drawLine(base, base + const Offset(0, -26), Paint()
+      ..color = UW.goldLight
+      ..strokeWidth = 1.6);
+    canvas.drawCircle(base + const Offset(0, -27), 2, Paint()..color = UW.goldLight);
+    final tp = TextPainter(
+      text: TextSpan(text: tag, style: UW.display(9.5, color: Colors.white, weight: FontWeight.w900)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final wave = math.sin(t * math.pi * 2 * 3) * 1.5;
+    final fw = tp.width + 16, fh = 15.0;
+    final top = base + const Offset(0, -26);
+    final flag = Path()
+      ..moveTo(top.dx, top.dy)
+      ..quadraticBezierTo(top.dx + fw / 2, top.dy + wave, top.dx + fw, top.dy)
+      ..lineTo(top.dx + fw - 5, top.dy + fh / 2)
+      ..lineTo(top.dx + fw, top.dy + fh)
+      ..quadraticBezierTo(top.dx + fw / 2, top.dy + fh + wave, top.dx, top.dy + fh)
+      ..close();
+    canvas.drawPath(flag.shift(const Offset(1, 2)), Paint()..color = Colors.black54);
+    canvas.drawPath(flag, Paint()..color = color);
+    canvas.drawPath(
+        flag,
+        Paint()
+          ..color = mine ? UW.goldLight : UW.gold.withValues(alpha: 0.7)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = mine ? 1.4 : 0.8);
+    tp.paint(canvas, top + Offset(5, (fh - tp.height) / 2 + wave / 2));
   }
 
   void _star(Canvas canvas, Offset c, double r, Color color) {

@@ -69,6 +69,7 @@ class PlayerState {
   final int money, xp, level, energy, energyMax, capacity, load, heat;
   final List<Holding> inventory;
   final Travel? travel;
+  final MyGang? gang;
   final Map<String, dynamic>? lastEvent;
 
   PlayerState.fromJson(Map<String, dynamic> j)
@@ -84,6 +85,7 @@ class PlayerState {
         heat = j['heat'],
         inventory = (j['inventory'] as List).map((e) => Holding.fromJson(e)).toList(),
         travel = j['travel'] == null ? null : Travel.fromJson(j['travel']),
+        gang = j['gang'] == null ? null : MyGang.fromJson(j['gang']),
         lastEvent = j['lastEvent'];
 
   int qtyOf(String goodId) =>
@@ -97,9 +99,9 @@ class PlayerState {
 }
 
 class ChatMessage {
-  final String from, text;
+  final String from, text, channel;
   final DateTime at;
-  ChatMessage(this.from, this.text, this.at);
+  ChatMessage(this.from, this.text, this.at, {this.channel = 'global'});
 }
 
 class LeaderRow {
@@ -110,4 +112,108 @@ class LeaderRow {
         netWorth = (j['netWorth'] as num).toInt(),
         level = j['level'],
         username = j['username'];
+}
+
+// ====================== ÇETELER ======================
+class GangRef {
+  final int id;
+  final String name, tag, color, emblem;
+  GangRef.fromJson(Map<String, dynamic> j)
+      : id = j['id'],
+        name = j['name'],
+        tag = j['tag'],
+        color = j['color'],
+        emblem = j['emblem'] ?? 'star';
+}
+
+class MyGang extends GangRef {
+  final String rank;
+  final int bank;
+  MyGang.fromJson(super.j)
+      : rank = j['rank'],
+        bank = (j['bank'] as num).toInt(),
+        super.fromJson();
+  bool get canManage => rank == 'boss' || rank == 'underboss';
+  bool get isBoss => rank == 'boss';
+}
+
+class GangListItem extends GangRef {
+  final String motto;
+  final int members, maxMembers, territories, influence;
+  GangListItem.fromJson(super.j)
+      : motto = j['motto'] ?? '',
+        members = j['members'],
+        maxMembers = j['maxMembers'],
+        territories = j['territories'],
+        influence = (j['influence'] as num).round(),
+        super.fromJson();
+}
+
+class GangMember {
+  final int userId, contribution, level;
+  final String username, rank, rankName, districtId;
+  GangMember.fromJson(Map<String, dynamic> j)
+      : userId = j['userId'],
+        contribution = j['contribution'],
+        level = j['level'],
+        username = j['username'],
+        rank = j['rank'],
+        rankName = j['rankName'],
+        districtId = j['districtId'];
+}
+
+class GangDetail extends GangRef {
+  final String motto;
+  final int bank, maxMembers;
+  final List<String> territories;
+  final List<GangMember> members;
+  GangDetail.fromJson(super.j)
+      : motto = j['motto'] ?? '',
+        bank = (j['bank'] as num).toInt(),
+        maxMembers = j['maxMembers'],
+        territories = List<String>.from(j['territories']),
+        members = (j['members'] as List).map((e) => GangMember.fromJson(e)).toList(),
+        super.fromJson();
+}
+
+class Influence extends GangRef {
+  final int points;
+  Influence.fromJson(super.j)
+      : points = (j['points'] as num).toInt(),
+        super.fromJson();
+}
+
+class Territory {
+  final DateTime? warEndsAt;
+  final GangRef? controller;
+  final List<Influence> influence;
+  Territory.fromJson(Map<String, dynamic> j)
+      : warEndsAt = j['warEndsAt'] == null ? null : DateTime.parse(j['warEndsAt']),
+        controller = j['controller'] == null ? null : GangRef.fromJson(j['controller']),
+        influence = (j['influence'] as List).map((e) => Influence.fromJson(e)).toList();
+
+  /// İlk iki çete birbirine yakınsa semtte çatışma var.
+  bool get contested =>
+      influence.length >= 2 && influence[1].points >= 30 && influence[1].points >= influence[0].points * 0.7;
+}
+
+class TerritoryAction {
+  final String id, name, desc;
+  final int energy, money;
+  TerritoryAction(this.id, Map<String, dynamic> j)
+      : name = j['name'],
+        desc = j['desc'],
+        energy = j['energy'],
+        money = j['money'];
+}
+
+class NewsItem {
+  final int id;
+  final String text, kind;
+  final DateTime at;
+  NewsItem.fromJson(Map<String, dynamic> j)
+      : id = j['id'],
+        text = j['text'],
+        kind = j['kind'],
+        at = DateTime.parse(j['at']);
 }

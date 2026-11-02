@@ -39,6 +39,16 @@ class GameState extends ChangeNotifier {
   final List<ChatMessage> chat = [];
   int online = 0;
 
+  // Çeteler ve bölgeler
+  Map<String, Territory> territory = {};
+  int controlMin = 100;
+  List<TerritoryAction> territoryActions = [];
+  List<GangListItem> gangs = [];
+  GangDetail? myGang;
+  List<NewsItem> news = [];
+  int gangCreateCost = 2500;
+  int unreadGangChat = 0;
+
   /// Yolculuk bitince gösterilecek olay (UI okur ve temizler).
   Map<String, dynamic>? pendingEvent;
 
@@ -134,7 +144,90 @@ class GameState extends ChangeNotifier {
     await refreshMe();
     _connectSocket();
     unawaited(loadLeaderboard());
+    unawaited(loadTerritory());
+    unawaited(loadNews());
+    unawaited(loadGangs());
+    unawaited(loadMyGang());
   }
+
+  // ====== ÇETE / BÖLGE ======
+  void _applyTerritory(dynamic data) {
+    final m = Map<String, dynamic>.from(data);
+    territory = Map<String, dynamic>.from(m['districts'])
+        .map((k, v) => MapEntry(k, Territory.fromJson(Map<String, dynamic>.from(v))));
+    controlMin = m['controlMin'] ?? 100;
+    territoryActions = Map<String, dynamic>.from(m['actions'] ?? {})
+        .entries
+        .map((e) => TerritoryAction(e.key, Map<String, dynamic>.from(e.value)))
+        .toList();
+  }
+
+  Future<void> loadTerritory() async {
+    _applyTerritory(await _req('GET', '/api/territory'));
+    notifyListeners();
+  }
+
+  Future<void> loadNews() async {
+    news = (await _req('GET', '/api/news') as List).map((e) => NewsItem.fromJson(e)).toList();
+    notifyListeners();
+  }
+
+  Future<void> loadGangs() async {
+    gangs = (await _req('GET', '/api/gangs') as List).map((e) => GangListItem.fromJson(e)).toList();
+    final opts = await _req('GET', '/api/gang-options');
+    gangCreateCost = opts['cost'] ?? gangCreateCost;
+    notifyListeners();
+  }
+
+  Future<void> loadMyGang() async {
+    final g = me?.gang;
+    myGang = g == null ? null : GangDetail.fromJson(await _req('GET', '/api/gangs/${g.id}'));
+    notifyListeners();
+  }
+
+  Future<void> _afterGangChange() async {
+    await refreshMe();
+    await Future.wait([loadMyGang(), loadGangs(), loadTerritory()]);
+  }
+
+  Future<void> createGang(String name, String tag, String color, String emblem, String motto) async {
+    await _req('POST', '/api/gangs', {'name': name, 'tag': tag, 'color': color, 'emblem': emblem, 'motto': motto});
+    await _afterGangChange();
+  }
+
+  Future<void> joinGang(int id) async {
+    await _req('POST', '/api/gangs/$id/join');
+    await _afterGangChange();
+  }
+
+  Future<void> leaveGang() async {
+    await _req('POST', '/api/gang/leave');
+    await _afterGangChange();
+  }
+
+  Future<void> kickMember(int userId) async {
+    await _req('POST', '/api/gang/kick', {'userId': userId});
+    await loadMyGang();
+  }
+
+  Future<void> setRank(int userId, String rank) async {
+    await _req('POST', '/api/gang/rank', {'userId': userId, 'rank': rank});
+    await _afterGangChange();
+  }
+
+  Future<void> gangBank(bool deposit, int amount) async {
+    await _req('POST', deposit ? '/api/gang/deposit' : '/api/gang/withdraw', {'amount': amount});
+    await refreshMe();
+    await loadMyGang();
+  }
+
+  Future<Map<String, dynamic>> territoryAction(String action) async {
+    final r = await _req('POST', '/api/territory/action', {'action': action});
+    await refreshMe();
+    await loadTerritory();
+    return Map<String, dynamic>.from(r);
+  }
+
 
   Future<void> refreshMe() async {
     me = PlayerState.fromJson(await _req('GET', '/api/me'));
@@ -168,9 +261,9 @@ class GameState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void sendChat(String text) {
+  void sendChat(String text, {String channel = 'global'}) {
     if (text.trim().isEmpty) return;
-    _socket?.emit('chat', {'text': text.trim()});
+    _socket?.emit('chat', {'text': text.trim(), 'channel': channel});
   }
 
   // ====== CANLI VERİ ======
@@ -194,7 +287,10 @@ class GameState extends ChangeNotifier {
       }
     });
     s.on('chat', (data) {
-      chat.add(ChatMessage(data['from'] ?? '?', data['text'] ?? '', DateTime.tryParse(data['at'] ?? '') ?? DateTime.now()));
+      final channel = data['channel'] ?? 'global';
+      chat.add(ChatMessage(data['from'] ?? '?', data['text'] ?? '', DateTime.tryParse(data['at'] ?? '') ?? DateTime.now(),
+          channel: channel));
+      if (channel == 'gang' && data['from'] != me?.username) unreadGangChat++;
       if (chat.length > 100) chat.removeAt(0);
       notifyListeners();
     });
@@ -203,6 +299,16 @@ class GameState extends ChangeNotifier {
       notifyListeners();
     });
     s.on('arrived', (_) => refreshMe());
+    s.on('territory', (data) {
+      _applyTerritory(data);
+      notifyListeners();
+    });
+    s.on('news', (data) {
+      news = (data as List).map((e) => NewsItem.fromJson(Map<String, dynamic>.from(e))).toList();
+      unawaited(loadGangs());
+      notifyListeners();
+    });
+    s.on('gang', (_) => _afterGangChange());
     s.connect();
     _socket = s;
   }

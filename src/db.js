@@ -119,6 +119,43 @@ async function initDB() {
       );
       CREATE INDEX IF NOT EXISTS travels_active ON travels(user_id) WHERE resolved = false;
 
+      CREATE TABLE IF NOT EXISTS gangs (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(32) UNIQUE NOT NULL,
+        tag VARCHAR(4) UNIQUE NOT NULL,
+        color VARCHAR(9) NOT NULL,
+        emblem VARCHAR(16) NOT NULL DEFAULT 'star',
+        motto VARCHAR(80) NOT NULL DEFAULT '',
+        bank BIGINT NOT NULL DEFAULT 0 CHECK (bank >= 0),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE IF NOT EXISTS gang_members (
+        user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        gang_id INT NOT NULL REFERENCES gangs(id) ON DELETE CASCADE,
+        rank VARCHAR(12) NOT NULL DEFAULT 'soldier',
+        contribution INT NOT NULL DEFAULT 0,
+        joined_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS gang_members_gang ON gang_members(gang_id);
+
+      ALTER TABLE districts ADD COLUMN IF NOT EXISTS controller_gang_id INT REFERENCES gangs(id) ON DELETE SET NULL;
+      ALTER TABLE districts ADD COLUMN IF NOT EXISTS war_ends_at TIMESTAMPTZ;
+
+      CREATE TABLE IF NOT EXISTS district_influence (
+        district_id VARCHAR(32) REFERENCES districts(id) ON DELETE CASCADE,
+        gang_id INT REFERENCES gangs(id) ON DELETE CASCADE,
+        points REAL NOT NULL DEFAULT 0,
+        PRIMARY KEY (district_id, gang_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS news (
+        id SERIAL PRIMARY KEY,
+        text TEXT NOT NULL,
+        kind VARCHAR(16) NOT NULL DEFAULT 'info',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
       CREATE TABLE IF NOT EXISTS trades (
         id SERIAL PRIMARY KEY,
         user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -139,6 +176,12 @@ async function initDB() {
         [d.id, d.name, d.police, d.tax, d.x, d.y, d.color, d.desc]
       );
     }
+    // Bölge savaşı turu olmayan semtlere ilk turu başlat
+    await client.query(
+      `UPDATE districts SET war_ends_at = now() + make_interval(mins => $1) WHERE war_ends_at IS NULL`,
+      [Number(process.env.WAR_ROUND_MINUTES || 60)]
+    );
+
     for (const g of GOODS) {
       await client.query(
         `INSERT INTO goods (id, name, base_price, weight, heat, icon)

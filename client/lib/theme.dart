@@ -45,6 +45,12 @@ class UW {
         error: crimson,
       ),
       textTheme: base.textTheme.apply(fontFamily: GoogleFonts.inter().fontFamily, bodyColor: cream, displayColor: cream),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          foregroundColor: WidgetStateProperty.resolveWith((st) => st.contains(WidgetState.selected) ? goldLight : muted),
+          textStyle: WidgetStatePropertyAll(body(13, weight: FontWeight.w700)),
+        ),
+      ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: panelHi,
         contentTextStyle: body(14),

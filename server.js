@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 const { Server } = require("socket.io");
 const { pool, initDB } = require("./src/db");
 const game = require("./src/game");
+const gangs = require("./src/gangs");
 
 const app = express();
 const server = http.createServer(app);
@@ -141,6 +142,111 @@ app.post(
   handle(async (req, res) => res.json(await game.startTravel(pool, req.user.id, String(req.body?.to || ""))))
 );
 
+// ====== ÇETELER ======
+async function pushTerritory() {
+  try {
+    io.emit("territory", await gangs.territory(pool));
+  } catch (e) {
+    console.error("territory push:", e.message);
+  }
+}
+async function pushNews() {
+  try {
+    io.emit("news", await gangs.news(pool, 20));
+  } catch (e) {
+    console.error("news push:", e.message);
+  }
+}
+// Çete üyeliği değişince kullanıcının socket'lerini doğru çete odasına taşı
+async function syncGangRoom(userId) {
+  const r = await pool.query("SELECT gang_id FROM gang_members WHERE user_id=$1", [userId]);
+  const gangId = r.rows[0]?.gang_id;
+  for (const s of await io.in(`user:${userId}`).fetchSockets()) {
+    for (const room of s.rooms) if (room.startsWith("gang:")) s.leave(room);
+    if (gangId) s.join(`gang:${gangId}`);
+  }
+}
+
+app.get("/api/gangs", handle(async (req, res) => res.json(await gangs.listGangs(pool))));
+app.get("/api/gangs/:id", handle(async (req, res) => res.json(await gangs.gangDetail(pool, Number(req.params.id)))));
+app.get("/api/territory", handle(async (req, res) => res.json(await gangs.territory(pool))));
+app.get("/api/news", handle(async (req, res) => res.json(await gangs.news(pool, 20))));
+app.get(
+  "/api/gang-options",
+  handle(async (req, res) =>
+    res.json({ cost: gangs.GANG_CREATE_COST, emblems: gangs.EMBLEMS, colors: gangs.COLORS, ranks: gangs.RANK_NAMES })
+  )
+);
+
+app.post(
+  "/api/gangs",
+  auth,
+  handle(async (req, res) => {
+    const r = await gangs.createGang(pool, req.user.id, req.body || {});
+    await syncGangRoom(req.user.id);
+    pushNews();
+    res.json(r);
+  })
+);
+app.post(
+  "/api/gangs/:id/join",
+  auth,
+  handle(async (req, res) => {
+    const r = await gangs.joinGang(pool, req.user.id, Number(req.params.id));
+    await syncGangRoom(req.user.id);
+    io.to(`gang:${r.id}`).emit("gang", { type: "join", username: req.user.username });
+    res.json(r);
+  })
+);
+app.post(
+  "/api/gang/leave",
+  auth,
+  handle(async (req, res) => {
+    const r = await gangs.leaveGang(pool, req.user.id);
+    await syncGangRoom(req.user.id);
+    if (r.dissolved) {
+      pushNews();
+      pushTerritory();
+    }
+    res.json(r);
+  })
+);
+app.post(
+  "/api/gang/kick",
+  auth,
+  handle(async (req, res) => {
+    const target = Number(req.body?.userId);
+    const r = await gangs.kickMember(pool, req.user.id, target);
+    await syncGangRoom(target);
+    io.to(`user:${target}`).emit("gang", { type: "kicked" });
+    res.json(r);
+  })
+);
+app.post(
+  "/api/gang/rank",
+  auth,
+  handle(async (req, res) => res.json(await gangs.setRank(pool, req.user.id, Number(req.body?.userId), req.body?.rank)))
+);
+app.post(
+  "/api/gang/deposit",
+  auth,
+  handle(async (req, res) => res.json(await gangs.deposit(pool, req.user.id, req.body?.amount)))
+);
+app.post(
+  "/api/gang/withdraw",
+  auth,
+  handle(async (req, res) => res.json(await gangs.withdraw(pool, req.user.id, req.body?.amount)))
+);
+app.post(
+  "/api/territory/action",
+  auth,
+  handle(async (req, res) => {
+    const r = await gangs.territoryAction(pool, req.user.id, String(req.body?.action || ""));
+    pushTerritory();
+    res.json(r);
+  })
+);
+
 // Sadece geliştirme: ENABLE_DEV_ENDPOINTS=true iken açık. Canlıda ekonomiyi bozar.
 if (DEV_ENDPOINTS) {
   app.post(
@@ -180,15 +286,29 @@ io.use((socket, next) => {
   next();
 });
 
-io.on("connection", (socket) => {
-  if (socket.user) socket.join(`user:${socket.user.id}`);
+io.on("connection", async (socket) => {
+  if (socket.user) {
+    socket.join(`user:${socket.user.id}`);
+    try {
+      const r = await pool.query("SELECT gang_id FROM gang_members WHERE user_id=$1", [socket.user.id]);
+      if (r.rows[0]) socket.join(`gang:${r.rows[0].gang_id}`);
+    } catch {
+      /* yoksay */
+    }
+  }
   io.emit("online", io.engine.clientsCount);
 
   socket.on("chat", (data) => {
     if (!socket.user) return;
     const text = String(data?.text ?? data ?? "").trim().slice(0, 280);
     if (!text) return;
-    io.emit("chat", { from: socket.user.username, text, at: new Date().toISOString() });
+    const msg = { from: socket.user.username, text, at: new Date().toISOString() };
+    if (data?.channel === "gang") {
+      const room = [...socket.rooms].find((r) => r.startsWith("gang:"));
+      if (room) io.to(room).emit("chat", { ...msg, channel: "gang" });
+      return;
+    }
+    io.emit("chat", { ...msg, channel: "global" });
   });
 
   socket.on("disconnect", () => io.emit("online", io.engine.clientsCount));
@@ -211,6 +331,9 @@ async function tick() {
       client.release();
     }
     io.emit("prices", await game.getPrices(pool));
+    const changes = await gangs.resolveWars(pool);
+    await pushTerritory();
+    if (changes.length) await pushNews();
   } catch (e) {
     console.error("tick error:", e.message);
   }

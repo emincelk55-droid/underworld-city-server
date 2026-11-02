@@ -152,7 +152,7 @@ Kurallar:
 - Canlı fiyat akışı (socket), fiyat grafiği
 - Sıralama listeleri (servet, haftalık kâr)
 
-### Faz 3: Sosyal ve strateji (3 hafta)
+### Faz 3: Sosyal ve strateji (3 hafta) — ✅ çeteler ve semt kontrolü yapıldı, PvP soygun sırada
 - Çeteler, ortak kasa, çete sohbeti
 - Semt kontrolü ve haftalık bölge savaşı
 - Oyuncu soygunu (PvP), koruma

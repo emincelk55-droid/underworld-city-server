@@ -1,3 +1,5 @@
+const { gangOf, addInfluence } = require("./influence");
+
 // Oyun kuralları: enerji, fiyatlar, ticaret, yolculuk.
 // Para ve envanteri değiştiren her işlem bir transaction içinde, ilgili satırlar
 // FOR UPDATE ile kilitlenerek yapılır. Böylece aynı anda gelen istekler para kopyalayamaz.
@@ -98,7 +100,7 @@ async function trade(pool, userId, { goodId, qty, side }) {
     if (await activeTravel(client, userId)) throw new GameError("Yoldayken ticaret yapamazsın");
 
     const dg = await client.query(
-      `SELECT dg.*, g.weight, g.name, d.tax FROM district_goods dg
+      `SELECT dg.*, g.weight, g.name, d.tax, d.controller_gang_id FROM district_goods dg
        JOIN goods g ON g.id = dg.good_id JOIN districts d ON d.id = dg.district_id
        WHERE dg.district_id=$1 AND dg.good_id=$2 FOR UPDATE OF dg`,
       [player.district_id, goodId]
@@ -124,6 +126,9 @@ async function trade(pool, userId, { goodId, qty, side }) {
     );
     const have = held.rows[0] || { qty: 0, avg_cost: 0 };
 
+    const gang = await gangOf(client, userId);
+    const ownTurf = gang && market.controller_gang_id === gang.id;
+
     let moneyDelta, tax = 0;
     if (side === "buy") {
       const total = Math.ceil(gross);
@@ -141,8 +146,15 @@ async function trade(pool, userId, { goodId, qty, side }) {
       );
     } else {
       if (have.qty < qty) throw new GameError("Elinde o kadar mal yok");
-      tax = Math.ceil(gross * market.tax);
+      // Kendi bölgende vergi yarı yarıya. Bölgeyi tutan çete verginin yarısını kasaya alır.
+      tax = Math.ceil(gross * market.tax * (ownTurf ? 0.5 : 1));
       moneyDelta = Math.floor(gross) - tax;
+      if (market.controller_gang_id) {
+        await client.query("UPDATE gangs SET bank = bank + $2 WHERE id=$1", [
+          market.controller_gang_id,
+          Math.floor(tax * 0.5)
+        ]);
+      }
       await client.query("UPDATE player_goods SET qty=qty-$3 WHERE user_id=$1 AND good_id=$2", [
         userId,
         goodId,
@@ -154,6 +166,9 @@ async function trade(pool, userId, { goodId, qty, side }) {
       "UPDATE players SET money = money + $1, xp = xp + $3 WHERE user_id=$2 RETURNING money",
       [moneyDelta, userId, Math.max(1, Math.floor(qty / 5))]
     );
+    // Çete üyelerinin ticareti bölgede nüfuz kazandırır (her ₺100 için 1 puan)
+    if (gang) await addInfluence(client, gang.id, player.district_id, Math.floor(gross / 100), userId);
+
     await client.query("UPDATE district_goods SET price=$1 WHERE district_id=$2 AND good_id=$3", [
       newPrice,
       player.district_id,
@@ -191,9 +206,11 @@ function travelSeconds(from, to) {
 }
 
 // Yolculuğun sonucu yola çıkarken belirlenir, varışta uygulanır.
-function rollEvent(dest, origin, rows, money) {
+// Kendi çetenin bölgesinde polis riski yarıya iner, soygun olmaz.
+function rollEvent(dest, origin, rows, money, gangId = null) {
+  const ownTurf = gangId && dest.controller_gang_id === gangId;
   const hotness = rows.reduce((s, r) => s + r.qty * r.heat, 0);
-  const pPolice = Math.min(0.85, dest.police * (hotness / 90));
+  const pPolice = Math.min(0.85, dest.police * (ownTurf ? 0.5 : 1) * (hotness / 90));
   if (hotness > 0 && Math.random() < pPolice) {
     const seized = rows
       .filter((r) => r.heat > 0)
@@ -201,7 +218,7 @@ function rollEvent(dest, origin, rows, money) {
     return { type: "police", seized };
   }
   const roughArea = dest.id === "gecekondu" || origin.id === "gecekondu";
-  if (roughArea && money > 500 && Math.random() < 0.2) {
+  if (roughArea && !ownTurf && money > 500 && Math.random() < 0.2) {
     return { type: "robbery", lost: Math.floor(money * 0.15) };
   }
   if (Math.random() < 0.08) {
@@ -227,7 +244,8 @@ async function startTravel(pool, userId, toId) {
     await spendEnergy(client, player, TRAVEL_ENERGY);
     const seconds = travelSeconds(from, to);
     const rows = await cargo(client, userId);
-    const event = rollEvent(to, from, rows, Number(player.money));
+    const gang = await gangOf(client, userId);
+    const event = rollEvent(to, from, rows, Number(player.money), gang?.id);
 
     const t = await client.query(
       `INSERT INTO travels (user_id, from_id, to_id, arrive_at, event)
@@ -306,6 +324,7 @@ async function getState(pool, userId) {
     const player = p.rows[0];
     const rows = await cargo(client, userId);
     const travel = await activeTravel(client, userId);
+    const gang = await gangOf(client, userId);
 
     // Görülmemiş son yolculuk olayı (bir kez gösterilir)
     const last = await client.query(
@@ -343,6 +362,9 @@ async function getState(pool, userId) {
         avgCost: round2(r.avg_cost)
       })),
       travel: travel ? formatTravel(travel) : null,
+      gang: gang
+        ? { id: gang.id, name: gang.name, tag: gang.tag, color: gang.color, emblem: gang.emblem, rank: gang.rank, bank: Number(gang.bank) }
+        : null,
       lastEvent
     };
   } catch (e) {
@@ -420,6 +442,10 @@ async function tickPrices(pool) {
 
 module.exports = {
   GameError,
+  lockPlayer,
+  activeTravel,
+  spendEnergy,
+  energyNow,
   trade,
   startTravel,
   resolveArrivals,

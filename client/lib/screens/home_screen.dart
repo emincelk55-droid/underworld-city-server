@@ -7,6 +7,8 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets/city_map.dart';
 import '../widgets/deco.dart';
+import '../widgets/crest.dart';
+import 'gang_panel.dart';
 import 'panels.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -80,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => DistrictSheet(game: g, district: d, onGo: () => _go(d)),
+      builder: (_) => DistrictSheet(game: g, district: d, onGo: () => _go(d), toast: _toast),
     ).whenComplete(() => mounted ? setState(() => _selected = null) : null);
   }
 
@@ -93,6 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final panels = [
         MarketPanel(game: g, toast: _toast),
         InventoryPanel(game: g, toast: _toast),
+        GangPanel(game: g, toast: _toast),
         LeaderboardPanel(game: g),
         ChatPanel(game: g),
       ];
@@ -115,8 +118,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               _SideTabs(
                                 index: _sideTab,
                                 onChanged: (i) => setState(() => _sideTab = i),
-                                labels: const ['Pazar', 'Çanta', 'Sıralama', 'Sohbet'],
-                                icons: const [Icons.storefront, Icons.work_outline, Icons.emoji_events_outlined, Icons.forum_outlined],
+                                labels: const ['Pazar', 'Çanta', 'Aile', 'Sıralama', 'Sohbet'],
+                                icons: const [Icons.storefront, Icons.work_outline, Icons.shield_outlined, Icons.emoji_events_outlined, Icons.forum_outlined],
                               ),
                               const SizedBox(height: 10),
                               Expanded(child: IndexedStack(index: _sideTab, children: panels)),
@@ -165,9 +168,21 @@ class _MapView extends StatelessWidget {
               currentId: me.districtId,
               selectedId: selected,
               travel: travel,
+              territory: game.territory,
+              myGangId: me.gang?.id,
               onTap: onTap,
             ),
           ),
+          if (game.news.isNotEmpty)
+            Positioned(
+              right: 12,
+              top: 12,
+              left: MediaQuery.sizeOf(context).width < 600 ? 12 : null,
+              child: Padding(
+                padding: EdgeInsets.only(top: MediaQuery.sizeOf(context).width < 600 ? 44 : 0),
+                child: Align(alignment: Alignment.topRight, child: NewsTicker(news: game.news)),
+              ),
+            ),
           Positioned(
             left: 14,
             top: 12,
@@ -268,7 +283,14 @@ class Hud extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                Text(me.username, style: UW.serif(16)),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (me.gang != null) ...[
+                    GangCrest(color: me.gang!.color, emblem: me.gang!.emblem, tag: me.gang!.tag, size: 18),
+                    const SizedBox(width: 6),
+                    Text('[${me.gang!.tag}] ', style: UW.display(13, color: hexColor(me.gang!.color), weight: FontWeight.w900)),
+                  ],
+                  Text(me.username, style: UW.serif(16)),
+                ]),
                 Text('Seviye ${me.level}  ·  ${game.online} çevrimiçi', style: UW.body(11, color: UW.muted)),
               ]),
             ]),
@@ -351,6 +373,7 @@ class _BottomNav extends StatelessWidget {
     (Icons.map_outlined, 'Şehir'),
     (Icons.storefront, 'Pazar'),
     (Icons.work_outline, 'Çanta'),
+    (Icons.shield_outlined, 'Aile'),
     (Icons.emoji_events_outlined, 'Sıralama'),
     (Icons.forum_outlined, 'Sohbet'),
   ];

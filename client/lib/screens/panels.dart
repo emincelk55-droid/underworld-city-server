@@ -6,6 +6,8 @@ import '../models.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets/deco.dart';
+import '../widgets/crest.dart';
+import 'gang_panel.dart';
 
 typedef Toast = void Function(String msg, {bool error});
 
@@ -453,26 +455,84 @@ class InventoryPanel extends StatelessWidget {
 }
 
 // ====================== SIRALAMA ======================
-class LeaderboardPanel extends StatelessWidget {
+class LeaderboardPanel extends StatefulWidget {
   final GameState game;
   const LeaderboardPanel({super.key, required this.game});
 
   @override
+  State<LeaderboardPanel> createState() => _LeaderboardPanelState();
+}
+
+class _LeaderboardPanelState extends State<LeaderboardPanel> {
+  bool gangsView = false;
+
+  @override
   Widget build(BuildContext context) {
+    final game = widget.game;
     const medals = [Color(0xFFF5DE8B), Color(0xFFC9D1D9), Color(0xFFCD7F32)];
     return DecoPanel(
       padding: const EdgeInsets.fromLTRB(14, 16, 14, 8),
       child: Column(children: [
-        const DecoHeading('Şehrin Zenginleri'),
+        DecoHeading(gangsView ? 'Şehrin Aileleri' : 'Şehrin Zenginleri'),
         const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: game.loadLeaderboard,
-            icon: const Icon(Icons.refresh, size: 16, color: UW.gold),
-            label: Text('Yenile', style: UW.body(12, color: UW.gold)),
+        Row(children: [
+          SegmentedButton<bool>(
+            segments: const [
+              ButtonSegment(value: false, label: Text('Oyuncu'), icon: Icon(Icons.person, size: 16)),
+              ButtonSegment(value: true, label: Text('Aile'), icon: Icon(Icons.shield, size: 16)),
+            ],
+            showSelectedIcon: false,
+            selected: {gangsView},
+            onSelectionChanged: (v) => setState(() => gangsView = v.first),
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              backgroundColor: WidgetStateProperty.resolveWith(
+                  (st) => st.contains(WidgetState.selected) ? UW.gold.withValues(alpha: 0.2) : UW.ink),
+              side: WidgetStatePropertyAll(BorderSide(color: UW.gold.withValues(alpha: 0.5))),
+            ),
           ),
-        ),
+          const Spacer(),
+          IconButton(
+            tooltip: 'Yenile',
+            onPressed: gangsView ? game.loadGangs : game.loadLeaderboard,
+            icon: const Icon(Icons.refresh, size: 18, color: UW.gold),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        if (gangsView)
+          Expanded(
+            child: ListView.builder(
+              itemCount: game.gangs.length,
+              itemBuilder: (_, i) {
+                final gg = game.gangs[i];
+                final mine = gg.id == game.me?.gang?.id;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: mine ? UW.gold.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.25),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: hexColor(gg.color).withValues(alpha: mine ? 0.9 : 0.35)),
+                  ),
+                  child: Row(children: [
+                    SizedBox(width: 30, child: Text('#${i + 1}', style: UW.number(13, color: i < 3 ? medals[i] : UW.muted))),
+                    GangCrest(color: gg.color, emblem: gg.emblem, tag: gg.tag, size: 30),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(gg.name, style: UW.serif(14)),
+                        Text('${gg.members} üye · ${gg.influence} nüfuz', style: UW.body(11, color: UW.muted)),
+                      ]),
+                    ),
+                    Icon(Icons.flag, size: 16, color: hexColor(gg.color)),
+                    const SizedBox(width: 4),
+                    Text('${gg.territories}', style: UW.number(16, color: UW.goldLight)),
+                  ]),
+                );
+              },
+            ),
+          )
+        else
         Expanded(
           child: ListView.builder(
             itemCount: game.leaders.length,
@@ -518,19 +578,44 @@ class ChatPanel extends StatefulWidget {
 
 class _ChatPanelState extends State<ChatPanel> {
   final _c = TextEditingController();
+  String channel = 'global';
 
   void _send() {
-    widget.game.sendChat(_c.text);
+    widget.game.sendChat(_c.text, channel: channel);
     _c.clear();
   }
 
   @override
   Widget build(BuildContext context) {
-    final msgs = widget.game.chat;
+    final g = widget.game;
+    final inGang = g.me?.gang != null;
+    if (!inGang) channel = 'global';
+    if (channel == 'gang') g.unreadGangChat = 0;
+    final msgs = g.chat.where((m) => m.channel == channel).toList();
     return DecoPanel(
       padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
       child: Column(children: [
-        const DecoHeading('Kahvehane'),
+        DecoHeading(channel == 'gang' ? 'Aile Masası' : 'Kahvehane'),
+        if (inGang) ...[
+          const SizedBox(height: 10),
+          SegmentedButton<String>(
+            segments: [
+              const ButtonSegment(value: 'global', label: Text('Genel'), icon: Icon(Icons.public, size: 16)),
+              ButtonSegment(
+                value: 'gang',
+                label: Text(g.unreadGangChat > 0 ? 'Aile (${g.unreadGangChat})' : 'Aile'),
+                icon: const Icon(Icons.shield, size: 16),
+              ),
+            ],
+            selected: {channel},
+            onSelectionChanged: (v) => setState(() => channel = v.first),
+            style: ButtonStyle(
+              backgroundColor: WidgetStateProperty.resolveWith(
+                  (st) => st.contains(WidgetState.selected) ? UW.gold.withValues(alpha: 0.2) : UW.ink),
+              side: WidgetStatePropertyAll(BorderSide(color: UW.gold.withValues(alpha: 0.5))),
+            ),
+          ),
+        ],
         const SizedBox(height: 10),
         Expanded(
           child: msgs.isEmpty
@@ -580,10 +665,13 @@ class DistrictSheet extends StatelessWidget {
   final GameState game;
   final District district;
   final VoidCallback onGo;
-  const DistrictSheet({super.key, required this.game, required this.district, required this.onGo});
+  final Toast toast;
+  const DistrictSheet({super.key, required this.game, required this.district, required this.onGo, required this.toast});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable: game, builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final me = game.me!;
     final c = hexColor(district.color);
     final isHere = me.districtId == district.id;
@@ -609,6 +697,9 @@ class DistrictSheet extends StatelessWidget {
             accent: c,
             glow: true,
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+              child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               Row(children: [
                 Container(width: 4, height: 40, color: c),
@@ -626,7 +717,14 @@ class DistrictSheet extends StatelessWidget {
                 Chip2('Vergi %${(district.tax * 100).round()}', icon: Icons.account_balance, color: UW.gold),
                 if (district.id == 'gecekondu') const Chip2('Soygun riski', icon: Icons.warning_amber, color: Color(0xFFE09F3E)),
               ]),
+              const SizedBox(height: 14),
+              Container(height: 1, color: UW.gold.withValues(alpha: 0.2)),
+              const SizedBox(height: 12),
+              WarSection(game: game, district: district, toast: toast),
+              const SizedBox(height: 4),
               if (!isHere) ...[
+                const SizedBox(height: 10),
+                Container(height: 1, color: UW.gold.withValues(alpha: 0.2)),
                 const SizedBox(height: 16),
                 Text('BURADAN AL, ORADA SAT', style: UW.display(11, color: UW.muted)),
                 const SizedBox(height: 8),
@@ -655,6 +753,8 @@ class DistrictSheet extends StatelessWidget {
                 onTap: isHere || me.travel != null || me.energy < game.travelEnergy ? null : onGo,
               ),
             ]),
+              ),
+            ),
           ),
         ),
       ),
