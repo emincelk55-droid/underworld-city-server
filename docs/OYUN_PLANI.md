@@ -147,7 +147,7 @@ Kurallar:
 - Basit web istemcisi: profil, semt ekranı, al/sat, yolculuk
 - Genel sohbet (Socket.io bağlantısı zaten var)
 
-### Faz 2: Oyuncu ekonomisi (2 hafta)
+### Faz 2: Oyuncu ekonomisi (2 hafta) — ✅ semt borsaları, eşleşme motoru, depolar yapıldı
 - Semt başına emir defteri, eşleşme motoru, vergi
 - Canlı fiyat akışı (socket), fiyat grafiği
 - Sıralama listeleri (servet, haftalık kâr)

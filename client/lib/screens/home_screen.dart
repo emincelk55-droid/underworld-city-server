@@ -9,6 +9,7 @@ import '../widgets/city_map.dart';
 import '../widgets/deco.dart';
 import '../widgets/crest.dart';
 import 'gang_panel.dart';
+import 'exchange.dart';
 import 'panels.dart';
 import 'street.dart';
 
@@ -47,6 +48,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _onGame() {
+    while (g.toasts.isNotEmpty && mounted) {
+      final (msg, err) = g.toasts.removeAt(0);
+      _toast(msg, error: err);
+    }
     final robbed = g.pendingRobbed;
     if (robbed != null && !_showingEvent && mounted) {
       g.pendingRobbed = null;
@@ -114,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final wide = box.maxWidth >= 980;
       final map = _MapView(game: g, selected: _selected, onTap: _openDistrict, onStreet: _openStreet);
       final panels = [
-        MarketPanel(game: g, toast: _toast),
+        MarketTabs(game: g, toast: _toast),
         InventoryPanel(game: g, toast: _toast),
         GangPanel(game: g, toast: _toast),
         LeaderboardPanel(game: g),

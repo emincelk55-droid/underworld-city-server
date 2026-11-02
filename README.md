@@ -31,6 +31,19 @@ Tasarım planı: [`docs/OYUN_PLANI.md`](docs/OYUN_PLANI.md)
 - Koruma: yeni oyuncular ilk 2 saat, soyulanlar 30 dakika korumadadır. Soygun yaparsan kendi koruman biter. Aynı aileden kimse soyulamaz
 - Kurban gerçek zamanlı bildirim alır. Oyunda değilse bildirim bir sonraki girişinde gelir. Sicil ekranında yaptığın ve sana yapılan soygunlar listelenir
 
+### Oyuncular arası borsa
+| Emir defteri | Borsa listesi | Depo ve emirler |
+|---|---|---|
+| ![](docs/screenshots/exchange_book.png) | ![](docs/screenshots/exchange_list.png) | ![](docs/screenshots/exchange_storage.png) |
+
+- Pazar sekmesinde iki mod var: **Tüccar** (NPC'den anında al/sat) ve **Borsa** (oyunculara limit emir ver)
+- Her semtin her mal için ayrı bir emir defteri var, yani EVE'deki gibi bölgesel fiyatlar. Fiyat-zaman önceliği geçerli ve işlem defterde bekleyen emrin fiyatından gerçekleşir
+- Alış emrinde para emanete alınır. Satış emrinde mal önce çantadan, sonra o semtteki depodan ayrılır
+- Satın alınan mal o semtteki **depoya** teslim edilir. Oradayken çantana alırsın (kapasite sınırı geçerli)
+- Satıcı semtin satış vergisini öder (kendi bölgende yarı vergi) ve bölgeyi tutan aile verginin yarısını kasaya alır. Aile üyelerinin borsa işlemleri de nüfuz kazandırır
+- Fiyat sınırı semtteki tüccar fiyatının %30'u ile 3 katı arasındadır. Kişi başı en fazla 10 açık emir olabilir. Emirler 72 saat sonra iptal olur ve emanetteki para ya da mal iade edilir
+- Defterde derinlik çubukları, makas, son işlemler ve bir fiyat grafiği var. Forma girdiğin emrin hemen ne kadar eşleşeceği önceden gösterilir. Emrin dolunca anında bildirim gelir
+
 ## Yapı
 - `server.js`, `src/`: Node.js + Express + Socket.io + PostgreSQL sunucusu
 - `client/`: Flutter istemcisi (web, Android, iOS)
@@ -74,5 +87,11 @@ cd client && flutter build web --release
 | GET | `/api/street` | Bulunduğun semtteki oyuncular (şans, koruma, intikam) |
 | POST | `/api/rob` | `{targetId}`: soygun |
 | GET | `/api/robberies` | Sicil: son soygunlar |
+| GET | `/api/market/summary/:districtId` | Semt borsası: en iyi alış/satış, hacim, son fiyat |
+| GET | `/api/market/book/:districtId/:goodId` | Emir defteri, son işlemler, emirlerin, depo |
+| POST | `/api/market/order` | `{goodId, side, price, qty}`: limit emir (eşleşir, kalanı deftere yazılır) |
+| POST | `/api/market/cancel` | `{orderId}` |
+| GET | `/api/market/orders`, `/api/storage` | Açık emirlerin, depoların |
+| POST | `/api/storage/collect` | `{goodId, qty?}`: depodan çantaya |
 
-Socket.io olayları: `prices`, `price`, `chat` (`channel: global|gang`), `online`, `arrived`, `territory`, `news`, `gang`, `robbed`.
+Socket.io olayları: `prices`, `price`, `chat` (`channel: global|gang`), `online`, `arrived`, `territory`, `news`, `gang`, `robbed`, `book`, `order_filled`, `order_expired`.

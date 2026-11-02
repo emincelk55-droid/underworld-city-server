@@ -7,6 +7,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets/deco.dart';
 import '../widgets/crest.dart';
+import 'exchange.dart' show MarketHoldings;
 import 'gang_panel.dart';
 
 typedef Toast = void Function(String msg, {bool error});
@@ -357,18 +358,22 @@ class InventoryPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final me = game.me!;
     if (me.inventory.isEmpty) {
-      return DecoPanel(
-        child: Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.work_outline, size: 48, color: UW.gold.withValues(alpha: 0.6)),
-            const SizedBox(height: 10),
-            Text('Çantan boş', style: UW.display(18, color: UW.goldLight)),
-            const SizedBox(height: 6),
-            Text('Pazardan ucuz mal al, başka semtte pahalıya sat.',
-                textAlign: TextAlign.center, style: UW.serif(13, color: UW.muted, weight: FontWeight.w400)),
-          ]),
+      return ListView(children: [
+        DecoPanel(
+          padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
+          child: Center(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.work_outline, size: 48, color: UW.gold.withValues(alpha: 0.6)),
+              const SizedBox(height: 10),
+              Text('Çantan boş', style: UW.display(18, color: UW.goldLight)),
+              const SizedBox(height: 6),
+              Text('Pazardan ucuz mal al, başka semtte pahalıya sat.',
+                  textAlign: TextAlign.center, style: UW.serif(13, color: UW.muted, weight: FontWeight.w400)),
+            ]),
+          ),
         ),
-      );
+        MarketHoldings(game: game, toast: toast),
+      ]);
     }
     final here = me.districtId;
     var value = 0.0;
@@ -393,9 +398,10 @@ class InventoryPanel extends StatelessWidget {
       const SizedBox(height: 10),
       Expanded(
         child: ListView.separated(
-          itemCount: me.inventory.length,
+          itemCount: me.inventory.length + 1,
           separatorBuilder: (_, _) => const SizedBox(height: 8),
           itemBuilder: (_, i) {
+            if (i == me.inventory.length) return MarketHoldings(game: game, toast: toast);
             final h = me.inventory[i];
             final good = game.good(h.goodId)!;
             // En iyi satış yeri

@@ -440,11 +440,15 @@ async function getPrices(pool) {
 async function leaderboard(pool) {
   const r = await pool.query(`
     SELECT u.username, p.money, p.xp,
-      p.money + COALESCE(SUM(pg.qty * g.base_price), 0) AS net_worth
+      p.money
+      + COALESCE((SELECT SUM(pg.qty * g.base_price) FROM player_goods pg JOIN goods g ON g.id=pg.good_id
+                  WHERE pg.user_id=p.user_id), 0)
+      + COALESCE((SELECT SUM(s.qty * g.base_price) FROM player_storage s JOIN goods g ON g.id=s.good_id
+                  WHERE s.user_id=p.user_id), 0)
+      + COALESCE((SELECT SUM(CASE WHEN o.side='buy' THEN o.escrow ELSE o.qty_left * g.base_price END)
+                  FROM market_orders o JOIN goods g ON g.id=o.good_id
+                  WHERE o.user_id=p.user_id AND o.status='open'), 0) AS net_worth
     FROM players p JOIN users u ON u.id = p.user_id
-    LEFT JOIN player_goods pg ON pg.user_id = p.user_id
-    LEFT JOIN goods g ON g.id = pg.good_id
-    GROUP BY u.username, p.money, p.xp
     ORDER BY net_worth DESC LIMIT 20`);
   return r.rows.map((x, i) => ({
     rank: i + 1,

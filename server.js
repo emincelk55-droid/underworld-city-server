@@ -10,6 +10,7 @@ const { pool, initDB } = require("./src/db");
 const game = require("./src/game");
 const gangs = require("./src/gangs");
 const pvp = require("./src/pvp");
+const market = require("./src/market");
 
 const app = express();
 const server = http.createServer(app);
@@ -277,6 +278,55 @@ app.post(
   })
 );
 
+// ====== BORSA ======
+app.get("/api/market/summary/:districtId", handle(async (req, res) => res.json(await market.summary(pool, req.params.districtId))));
+app.get(
+  "/api/market/book/:districtId/:goodId",
+  auth,
+  handle(async (req, res) => res.json(await market.book(pool, req.user.id, req.params.districtId, req.params.goodId)))
+);
+app.get("/api/market/orders", auth, handle(async (req, res) => res.json(await market.myOrders(pool, req.user.id))));
+app.get("/api/storage", auth, handle(async (req, res) => res.json(await market.storage(pool, req.user.id))));
+
+app.post(
+  "/api/market/order",
+  auth,
+  handle(async (req, res) => {
+    const r = await market.placeOrder(pool, req.user.id, req.body || {});
+    // Emri dolan karşı taraflara haber ver
+    const byMaker = new Map();
+    for (const f of r.fills) {
+      const m = byMaker.get(f.makerId) || { side: f.makerSide, qty: 0, value: 0 };
+      m.qty += f.qty;
+      m.value += f.qty * f.price;
+      byMaker.set(f.makerId, m);
+    }
+    for (const [makerId, m] of byMaker) {
+      io.to(`user:${makerId}`).emit("order_filled", {
+        side: m.side,
+        goodId: r.goodId,
+        goodName: r.goodName,
+        districtId: r.districtId,
+        qty: m.qty,
+        avgPrice: Math.round(m.value / m.qty)
+      });
+    }
+    io.emit("book", { districtId: r.districtId, goodId: r.goodId });
+    const { fills, ...out } = r;
+    res.json(out);
+  })
+);
+app.post(
+  "/api/market/cancel",
+  auth,
+  handle(async (req, res) => {
+    const r = await market.cancelOrder(pool, req.user.id, req.body?.orderId);
+    io.emit("book", { districtId: r.districtId, goodId: r.goodId });
+    res.json(r);
+  })
+);
+app.post("/api/storage/collect", auth, handle(async (req, res) => res.json(await market.collect(pool, req.user.id, req.body || {}))));
+
 // Sadece geliştirme: ENABLE_DEV_ENDPOINTS=true iken açık. Canlıda ekonomiyi bozar.
 if (DEV_ENDPOINTS) {
   app.post(
@@ -361,6 +411,10 @@ async function tick() {
       client.release();
     }
     io.emit("prices", await game.getPrices(pool));
+    for (const o of await market.expireOrders(pool)) {
+      io.to(`user:${o.user_id}`).emit("order_expired", { goodId: o.good_id, districtId: o.district_id });
+      io.emit("book", { districtId: o.district_id, goodId: o.good_id });
+    }
     const changes = await gangs.resolveWars(pool);
     await pushTerritory();
     if (changes.length) await pushNews();

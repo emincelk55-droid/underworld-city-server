@@ -55,6 +55,16 @@ class GameState extends ChangeNotifier {
   Map<String, dynamic>? pendingRobbed;
   Timer? _streetTimer;
 
+  // Borsa
+  Map<String, MarketSummary> marketSummary = {};
+  String? summaryDistrict;
+  OrderBook? openBook;
+  List<MyOrder> myOrders = [];
+  List<StorageItem> storage = [];
+
+  /// Ekranda gösterilecek kısa bildirimler (mesaj, hata mı)
+  final List<(String, bool)> toasts = [];
+
   /// Yolculuk bitince gösterilecek olay (UI okur ve temizler).
   Map<String, dynamic>? pendingEvent;
 
@@ -157,10 +167,64 @@ class GameState extends ChangeNotifier {
     unawaited(loadGangs());
     unawaited(loadMyGang());
     unawaited(loadStreet());
+    unawaited(loadMarketSummary());
+    unawaited(loadMyMarket());
     _streetTimer?.cancel();
     _streetTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (token != null) unawaited(loadStreet().catchError((_) {}));
     });
+  }
+
+  // ====== BORSA ======
+  Future<void> loadMarketSummary() async {
+    final d = me?.districtId;
+    if (d == null) return;
+    final r = await _req('GET', '/api/market/summary/$d') as List;
+    marketSummary = {for (final e in r) e['goodId'] as String: MarketSummary.fromJson(e)};
+    summaryDistrict = d;
+    notifyListeners();
+  }
+
+  Future<void> loadBook(String districtId, String goodId) async {
+    openBook = OrderBook.fromJson(await _req('GET', '/api/market/book/$districtId/$goodId'));
+    notifyListeners();
+  }
+
+  Future<void> loadMyMarket() async {
+    final r = await Future.wait([_req('GET', '/api/market/orders'), _req('GET', '/api/storage')]);
+    myOrders = (r[0] as List).map((e) => MyOrder.fromJson(e)).toList();
+    storage = (r[1] as List).map((e) => StorageItem.fromJson(e)).toList();
+    notifyListeners();
+  }
+
+  int storageQty(String districtId, String goodId) =>
+      storage.where((s) => s.districtId == districtId && s.goodId == goodId).fold(0, (a, s) => a + s.qty);
+
+  Future<void> _afterMarket(String districtId, String goodId) async {
+    await refreshMe();
+    await Future.wait([
+      loadMyMarket(),
+      loadMarketSummary(),
+      if (openBook?.goodId == goodId && openBook?.districtId == districtId) loadBook(districtId, goodId),
+    ]);
+  }
+
+  Future<Map<String, dynamic>> placeOrder(String goodId, String side, int price, int qty) async {
+    final r = Map<String, dynamic>.from(
+        await _req('POST', '/api/market/order', {'goodId': goodId, 'side': side, 'price': price, 'qty': qty}));
+    await _afterMarket(r['districtId'], goodId);
+    return r;
+  }
+
+  Future<void> cancelOrder(MyOrder o, {String? districtId, String? goodId}) async {
+    final r = await _req('POST', '/api/market/cancel', {'orderId': o.id});
+    await _afterMarket(r['districtId'], r['goodId']);
+  }
+
+  Future<int> collect(String goodId, {int? qty}) async {
+    final r = await _req('POST', '/api/storage/collect', {'goodId': goodId, 'qty': ?qty});
+    await _afterMarket(me!.districtId, goodId);
+    return r['collected'] as int;
   }
 
   // ====== SOKAK ======
@@ -266,6 +330,7 @@ class GameState extends ChangeNotifier {
     // Semt ya da yolculuk durumu değiştiyse sokaktakileri yenile
     if (prev != null && (prev.districtId != me!.districtId || (prev.travel == null) != (me!.travel == null))) {
       unawaited(loadStreet().catchError((_) {}));
+      unawaited(loadMarketSummary().catchError((_) {}));
     }
     if (me!.lastEvent != null) pendingEvent = me!.lastEvent;
     if (me!.robbed != null) pendingRobbed = me!.robbed;
@@ -338,6 +403,25 @@ class GameState extends ChangeNotifier {
     s.on('arrived', (_) async {
       await refreshMe();
       unawaited(loadStreet());
+    });
+    s.on('book', (data) {
+      final d = data['districtId'], g = data['goodId'];
+      if (d == me?.districtId) unawaited(loadMarketSummary().catchError((_) {}));
+      if (openBook != null && openBook!.districtId == d && openBook!.goodId == g) {
+        unawaited(loadBook(d, g).catchError((_) {}));
+      }
+    });
+    s.on('order_filled', (data) async {
+      final where = district(data['districtId'] ?? '')?.name ?? '';
+      final verb = data['side'] == 'buy' ? 'Alış' : 'Satış';
+      toasts.add(('$verb emrin doldu: ${data['qty']} ${data['goodName']} × ₺${data['avgPrice']} ($where)', false));
+      await refreshMe();
+      unawaited(loadMyMarket());
+    });
+    s.on('order_expired', (_) async {
+      toasts.add(('Bir borsa emrinin süresi doldu ve iptal edildi', false));
+      await refreshMe();
+      unawaited(loadMyMarket());
     });
     s.on('robbed', (_) async {
       await refreshMe();

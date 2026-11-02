@@ -173,6 +173,46 @@ async function initDB() {
       CREATE INDEX IF NOT EXISTS robberies_target ON robberies(target_id, id DESC);
       CREATE INDEX IF NOT EXISTS robberies_attacker ON robberies(attacker_id, id DESC);
 
+      -- Oyuncu borsası: semt başına emir defteri
+      CREATE TABLE IF NOT EXISTS market_orders (
+        id SERIAL PRIMARY KEY,
+        user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        district_id VARCHAR(32) NOT NULL REFERENCES districts(id),
+        good_id VARCHAR(32) NOT NULL REFERENCES goods(id),
+        side VARCHAR(4) NOT NULL CHECK (side IN ('buy','sell')),
+        price INT NOT NULL CHECK (price > 0),
+        qty_total INT NOT NULL CHECK (qty_total > 0),
+        qty_left INT NOT NULL CHECK (qty_left >= 0),
+        escrow BIGINT NOT NULL DEFAULT 0 CHECK (escrow >= 0),
+        status VARCHAR(10) NOT NULL DEFAULT 'open',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS market_orders_book
+        ON market_orders(district_id, good_id, side, price) WHERE status = 'open';
+      CREATE INDEX IF NOT EXISTS market_orders_user ON market_orders(user_id) WHERE status = 'open';
+
+      CREATE TABLE IF NOT EXISTS market_trades (
+        id SERIAL PRIMARY KEY,
+        district_id VARCHAR(32) NOT NULL,
+        good_id VARCHAR(32) NOT NULL,
+        price INT NOT NULL,
+        qty INT NOT NULL,
+        buyer_id INT REFERENCES users(id) ON DELETE SET NULL,
+        seller_id INT REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+      CREATE INDEX IF NOT EXISTS market_trades_book ON market_trades(district_id, good_id, id DESC);
+
+      -- Semt depoları: borsadan alınan mal buraya teslim edilir
+      CREATE TABLE IF NOT EXISTS player_storage (
+        user_id INT REFERENCES users(id) ON DELETE CASCADE,
+        district_id VARCHAR(32) REFERENCES districts(id),
+        good_id VARCHAR(32) REFERENCES goods(id),
+        qty INT NOT NULL DEFAULT 0 CHECK (qty >= 0),
+        avg_cost REAL NOT NULL DEFAULT 0,
+        PRIMARY KEY (user_id, district_id, good_id)
+      );
+
       CREATE TABLE IF NOT EXISTS trades (
         id SERIAL PRIMARY KEY,
         user_id INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

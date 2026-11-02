@@ -275,3 +275,85 @@ class RobRecord {
         goods = j['goods'] ?? const [],
         at = DateTime.parse(j['at']);
 }
+
+// ====================== BORSA ======================
+class MarketSummary {
+  final String goodId;
+  final int? bestBid, bestAsk, last;
+  final int bidQty, askQty, vol24;
+  MarketSummary.fromJson(Map<String, dynamic> j)
+      : goodId = j['goodId'],
+        bestBid = j['bestBid'],
+        bestAsk = j['bestAsk'],
+        last = j['last'],
+        bidQty = j['bidQty'],
+        askQty = j['askQty'],
+        vol24 = j['vol24'];
+}
+
+class BookLevel {
+  final int price, qty, orders;
+  BookLevel.fromJson(Map<String, dynamic> j)
+      : price = j['price'],
+        qty = j['qty'],
+        orders = j['orders'];
+}
+
+class BookTrade {
+  final int price, qty;
+  final String? buyer, seller;
+  final DateTime at;
+  BookTrade.fromJson(Map<String, dynamic> j)
+      : price = j['price'],
+        qty = j['qty'],
+        buyer = j['buyer'],
+        seller = j['seller'],
+        at = DateTime.parse(j['at']);
+}
+
+class MyOrder {
+  final int id, price, qtyTotal, qtyLeft;
+  final String side;
+  final String? districtId, goodId;
+  final DateTime? expiresAt;
+  MyOrder.fromJson(Map<String, dynamic> j)
+      : id = j['id'],
+        price = j['price'],
+        qtyTotal = j['qtyTotal'],
+        qtyLeft = j['qtyLeft'],
+        side = j['side'],
+        districtId = j['districtId'],
+        goodId = j['goodId'],
+        expiresAt = j['expiresAt'] == null ? null : DateTime.parse(j['expiresAt']);
+}
+
+class OrderBook {
+  final String districtId, goodId;
+  final int minPrice, maxPrice, storage;
+  final List<BookLevel> bids, asks;
+  final List<BookTrade> trades;
+  final List<MyOrder> myOrders;
+  OrderBook.fromJson(Map<String, dynamic> j)
+      : districtId = j['districtId'],
+        goodId = j['goodId'],
+        minPrice = j['minPrice'],
+        maxPrice = j['maxPrice'],
+        storage = j['storage'],
+        bids = (j['bids'] as List).map((e) => BookLevel.fromJson(e)).toList(),
+        asks = (j['asks'] as List).map((e) => BookLevel.fromJson(e)).toList(),
+        trades = (j['trades'] as List).map((e) => BookTrade.fromJson(e)).toList(),
+        myOrders = (j['myOrders'] as List).map((e) => MyOrder.fromJson(e)).toList();
+
+  int? get bestBid => bids.isEmpty ? null : bids.first.price;
+  int? get bestAsk => asks.isEmpty ? null : asks.first.price;
+}
+
+class StorageItem {
+  final String districtId, goodId;
+  final int qty, avgCost;
+  StorageItem.fromJson(Map<String, dynamic> j)
+      : districtId = j['districtId'],
+        goodId = j['goodId'],
+        qty = j['qty'],
+        avgCost = j['avgCost'];
+}
