@@ -90,6 +90,16 @@ flutter run -d chrome --web-port 8080 --dart-define=API_URL=http://localhost:300
 # .env içinde CORS_ORIGIN=http://localhost:8080 olmalı
 ```
 
+## Android APK
+
+```bash
+cd client
+flutter build apk --release   # → build/app/outputs/flutter-apk/app-release.apk
+```
+
+GitHub Actions her çalışmada APK'yı da derler: **Actions → son çalışma → Artifacts → UnderworldCity-apk**.
+Uygulama varsayılan olarak `https://underworld-city.onrender.com` sunucusuna bağlanır. Giriş ekranındaki **Sunucu → Değiştir** ile başka bir adres (ör. aynı Wi-Fi'daki bilgisayar: `192.168.1.20:3000`) girilebilir.
+
 ## Testler
 
 ```bash

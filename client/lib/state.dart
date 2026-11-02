@@ -15,17 +15,33 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
-/// Sunucu adresi: `--dart-define=API_URL=...` ile verilebilir.
-/// Web'de verilmezse istemciyi servis eden sunucu kullanılır.
+/// Varsayılan sunucu adresi: `--dart-define=API_URL=...` ile verilebilir.
+/// Web'de verilmezse istemciyi servis eden sunucu, mobilde Render adresi kullanılır.
+/// Oyuncu giriş ekranından başka bir sunucu seçebilir (kaydedilir).
+const defaultMobileServer = 'https://underworld-city.onrender.com';
 String resolveApiUrl() {
   const fromEnv = String.fromEnvironment('API_URL');
   if (fromEnv.isNotEmpty) return fromEnv;
   if (kIsWeb && Uri.base.scheme.startsWith('http')) return Uri.base.origin;
-  return 'http://localhost:3000';
+  return defaultMobileServer;
+}
+
+/// "oyun.com", "192.168.1.5:3000" gibi girişleri tam adrese çevirir
+String normalizeServerUrl(String input) {
+  var u = input.trim();
+  if (u.isEmpty) return resolveApiUrl();
+  if (!u.startsWith('http://') && !u.startsWith('https://')) {
+    final local = RegExp(r'^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)').hasMatch(u);
+    u = '${local ? 'http' : 'https'}://$u';
+  }
+  while (u.endsWith('/')) {
+    u = u.substring(0, u.length - 1);
+  }
+  return u;
 }
 
 class GameState extends ChangeNotifier {
-  final String baseUrl = resolveApiUrl();
+  String baseUrl = resolveApiUrl();
   String? token;
   bool booting = true;
 
@@ -126,6 +142,7 @@ class GameState extends ChangeNotifier {
 
   Future<void> boot() async {
     final prefs = await SharedPreferences.getInstance();
+    baseUrl = prefs.getString('server_url') ?? baseUrl;
     token = prefs.getString('token');
     try {
       await _loadWorld();
@@ -134,6 +151,36 @@ class GameState extends ChangeNotifier {
       // Sunucu kapalıysa giriş ekranında hata gösterilir.
     }
     booting = false;
+    notifyListeners();
+  }
+
+  /// Sunucuya ulaşılabiliyor mu? (Render ücretsiz planda ilk açılış ~1 dk sürebilir)
+  Future<bool> ping([String? url]) async {
+    try {
+      final r = await http.get(Uri.parse('${url ?? baseUrl}/healthz')).timeout(const Duration(seconds: 75));
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Sunucuyu değiştir: bağlantıyı dener, başarılıysa kaydeder ve dünyayı yeniden yükler.
+  Future<void> setServer(String input) async {
+    final url = normalizeServerUrl(input);
+    if (!await ping(url)) throw ApiException('Sunucuya ulaşılamadı: $url');
+    final prefs = await SharedPreferences.getInstance();
+    if (url != baseUrl) {
+      // Hesaplar sunucuya özel: eski oturumu kapat
+      await prefs.remove('token');
+      token = null;
+      me = null;
+      _socket?.dispose();
+      _socket = null;
+    }
+    baseUrl = url;
+    await prefs.setString('server_url', url);
+    districts = [];
+    await _loadWorld();
     notifyListeners();
   }
 

@@ -94,6 +94,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Text(_register ? 'Zaten hesabın var mı? Giriş yap' : 'Yeni misin? Hesap oluştur',
                             style: UW.body(13, color: UW.goldLight)),
                       ),
+                      const SizedBox(height: 4),
+                      _ServerRow(game: widget.game),
                     ]),
                   ),
                 ]),
@@ -104,4 +106,100 @@ class _LoginScreenState extends State<LoginScreen> {
       ]),
     );
   }
+}
+
+/// Giriş ekranının altında: hangi sunucuya bağlı olduğunu gösterir, değiştirmeye izin verir.
+class _ServerRow extends StatelessWidget {
+  final GameState game;
+  const _ServerRow({required this.game});
+
+  @override
+  Widget build(BuildContext context) {
+    final host = Uri.tryParse(game.baseUrl)?.host ?? game.baseUrl;
+    return InkWell(
+      onTap: () => showDialog(context: context, builder: (_) => _ServerDialog(game: game)),
+      borderRadius: BorderRadius.circular(4),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.dns_outlined, size: 14, color: UW.muted.withValues(alpha: 0.9)),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text('Sunucu: $host', overflow: TextOverflow.ellipsis, style: UW.body(11.5, color: UW.muted)),
+          ),
+          const SizedBox(width: 6),
+          Text('Değiştir', style: UW.body(11.5, color: UW.goldLight, weight: FontWeight.w700)),
+        ]),
+      ),
+    );
+  }
+}
+
+class _ServerDialog extends StatefulWidget {
+  final GameState game;
+  const _ServerDialog({required this.game});
+
+  @override
+  State<_ServerDialog> createState() => _ServerDialogState();
+}
+
+class _ServerDialogState extends State<_ServerDialog> {
+  late final _c = TextEditingController(text: widget.game.baseUrl);
+  bool busy = false;
+  String? error;
+
+  Future<void> _connect() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.game.setServer(_c.text);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: DecoPanel(
+            padding: const EdgeInsets.all(20),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const DecoHeading('Sunucu', size: 13),
+              const SizedBox(height: 12),
+              Text(
+                'Oyunun çalıştığı sunucunun adresi. Örnek: underworld-city.onrender.com ya da '
+                'aynı Wi-Fi ağındaki bilgisayar için 192.168.1.20:3000',
+                style: UW.body(12, color: UW.muted),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _c,
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                style: UW.body(14),
+                decoration: const InputDecoration(labelText: 'Adres', prefixIcon: Icon(Icons.dns_outlined, color: UW.gold)),
+                onSubmitted: (_) => _connect(),
+              ),
+              if (busy) ...[
+                const SizedBox(height: 10),
+                Text('Bağlanılıyor... Sunucu uykudaysa uyanması bir dakika sürebilir.',
+                    style: UW.body(11.5, color: UW.goldLight)),
+              ],
+              if (error != null) ...[
+                const SizedBox(height: 10),
+                Text(error!, style: UW.body(12, color: UW.crimson)),
+              ],
+              const SizedBox(height: 14),
+              DecoButton('Bağlan', icon: Icons.link, loading: busy, onTap: _connect),
+            ]),
+          ),
+        ),
+      );
 }

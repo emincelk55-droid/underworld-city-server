@@ -55,3 +55,30 @@ jobs:
       - uses: actions/checkout@v4
       - name: Docker imajı derlenebiliyor mu
         run: docker build -t underworld-city .
+
+  android:
+    runs-on: ubuntu-latest
+    needs: [client]
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: APK derle
+        run: flutter build apk --release
+      - name: APK'yı indirilebilir yap (Actions → bu çalışma → Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: UnderworldCity-apk
+          path: client/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
